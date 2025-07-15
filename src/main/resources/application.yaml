@@ -1,0 +1,92 @@
+server:
+    port: 8086
+
+logging:
+    level:
+        org.springframework.ai.chat.client.advisor: DEBUG
+        org.springframework.ai: DEBUG
+        com.drk.SpringAIDemo: DEBUG
+    pattern:
+        console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+spring:
+    application:
+        name: SpringAIDemo
+    autoconfigure:
+        exclude:
+            - org.springframework.ai.autoconfigure.chat.memory.repository.jdbc.JdbcChatMemoryRepositoryAutoConfiguration
+    datasource:
+        url: jdbc:mysql://localhost:3306/spring_ai?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+        username: root
+        password: 123456
+        driver-class-name: com.mysql.cj.jdbc.Driver
+    ai:
+        dashscope:
+            api-key: ${DASHSCOPE_API_KEY}
+        model:
+            embedding: ollama
+        ollama:
+            embedding:
+                options:
+                    model: shaw/dmeta-embedding-zh
+                    truncate: true
+                    num-ctx: 2048
+                    num-batch: 512
+        openai:
+            embedding:
+                options:
+                    model: gemini-embedding-exp
+                api-key: ${GEMINI_API_KEY}
+                base-url: https://generativelanguage.googleapis.com/v1beta/openai
+                embeddings-path: /v1/embeddings
+
+            api-key: ${GEMINI_API_KEY}
+            base-url: https://generativelanguage.googleapis.com/v1beta/openai
+            chat:
+                completions-path: /chat/completions
+                options:
+                    model: gemini-2.0-flash
+        mcp:
+            client:
+                enabled: true
+                name: mcp-client
+                type: ASYNC
+                studio:
+                    servers-configuration: classpath:/mcp/baiduMapMcp.json
+            server:
+                enabled: true
+                type: ASYNC
+        vectorstore:
+            qdrant:
+                host: localhost
+                port: 6334
+                api-key: test123
+                collection-name: spring_ai
+                use-tls: false
+                initialize-schema: true
+                request-timeout: 5m
+mybatis-plus:
+    type-alias-package: com.drk.SpringAIDemo.entity
+    configuration:
+        map-underscore-to-camel-case: true
+    global-config:
+        db-config:
+            id-type: ASSIGN_ID
+            logic-delete-field: deleted
+            logic-delete-value: 1
+            logic-not-delete-value: 0
+    mapper-locations: classpath*:mapper/*.xml
+
+# 文件上传配置
+file:
+  upload:
+    path: C:\SpringAIDemo\uploads  # 文件上传路径
+    max-file-size: 100MB  # 单个文件最大大小
+    max-request-size: 100MB  # 请求最大大小
+
+# Spring 文件上传配置
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+      enabled: true

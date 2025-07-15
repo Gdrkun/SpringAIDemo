@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识文件管理测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1, h2 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .upload-area {
+            border: 2px dashed #007bff;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            background-color: #f8f9fa;
+        }
+        .upload-area:hover {
+            background-color: #e9ecef;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 10px 0;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .file-list {
+            margin-top: 20px;
+        }
+        .file-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .file-item h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .file-info {
+            color: #666;
+            font-size: 14px;
+        }
+        .response {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>知识文件管理测试页面</h1>
+        
+        <!-- 文件上传区域 -->
+        <h2>文件上传</h2>
+        <div class="upload-area">
+            <p>选择文件上传</p>
+            <input type="file" id="fileInput" multiple>
+            <br>
+            <input type="text" id="description" placeholder="文件描述（可选）">
+            <br>
+            <label>
+                <input type="checkbox" id="enableVectorization" checked> 启用向量化
+            </label>
+            <br>
+            <button onclick="uploadFile()">上传文件</button>
+        </div>
+        
+        <div id="uploadResponse" class="response" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <!-- 文件查询区域 -->
+        <h2>文件查询</h2>
+        <input type="text" id="searchFileName" placeholder="输入文件名搜索">
+        <button onclick="searchFiles()">搜索文件</button>
+        <button onclick="loadFileList()">加载文件列表</button>
+        <br><br>
+        <input type="text" id="vectorSearchQuery" placeholder="输入查询内容进行向量搜索">
+        <button onclick="vectorSearch()">向量搜索</button>
+        
+        <div id="searchResponse" class="response" style="display: none;"></div>
+        
+        <!-- 文件列表 -->
+        <div id="fileList" class="file-list"></div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/knowledge-files';
+
+        // 上传文件
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const description = document.getElementById('description').value;
+            const enableVectorization = document.getElementById('enableVectorization').checked;
+            const responseDiv = document.getElementById('uploadResponse');
+
+            if (!fileInput.files.length) {
+                showResponse(responseDiv, '请选择文件', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            if (description) {
+                formData.append('description', description);
+            }
+            formData.append('enableVectorization', enableVectorization);
+
+            try {
+                showResponse(responseDiv, '正在上传...', '');
+                
+                const response = await fetch(`${API_BASE}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                showResponse(responseDiv, JSON.stringify(result, null, 2), 
+                    result.code === 200 ? 'success' : 'error');
+                
+                if (result.code === 200) {
+                    // 清空输入
+                    fileInput.value = '';
+                    document.getElementById('description').value = '';
+                    // 刷新文件列表
+                    loadFileList();
+                }
+
+            } catch (error) {
+                showResponse(responseDiv, `上传失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 搜索文件
+        async function searchFiles() {
+            const fileName = document.getElementById('searchFileName').value;
+            const responseDiv = document.getElementById('searchResponse');
+
+            if (!fileName.trim()) {
+                showResponse(responseDiv, '请输入搜索关键词', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/search?fileName=${encodeURIComponent(fileName)}`);
+                const result = await response.json();
+                
+                showResponse(responseDiv, JSON.stringify(result, null, 2), 
+                    result.code === 200 ? 'success' : 'error');
+                
+                if (result.code === 200) {
+                    displayFileList(result.data);
+                }
+
+            } catch (error) {
+                showResponse(responseDiv, `搜索失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 加载文件列表
+        async function loadFileList() {
+            try {
+                const response = await fetch(`${API_BASE}/list?current=1&size=20`);
+                const result = await response.json();
+                
+                if (result.code === 200) {
+                    displayFileList(result.data.records);
+                }
+
+            } catch (error) {
+                console.error('加载文件列表失败:', error);
+            }
+        }
+
+        // 显示文件列表
+        function displayFileList(files) {
+            const fileListDiv = document.getElementById('fileList');
+            
+            if (!files || files.length === 0) {
+                fileListDiv.innerHTML = '<p>暂无文件</p>';
+                return;
+            }
+
+            const html = files.map(file => `
+                <div class="file-item">
+                    <h4>${file.fileName}</h4>
+                    <div class="file-info">
+                        <p><strong>ID:</strong> ${file.id}</p>
+                        <p><strong>类型:</strong> ${file.fileType}</p>
+                        <p><strong>大小:</strong> ${formatFileSize(file.fileSize)}</p>
+                        <p><strong>描述:</strong> ${file.description || '无'}</p>
+                        <p><strong>上传时间:</strong> ${new Date(file.createdAt).toLocaleString()}</p>
+                        <p><strong>向量化状态:</strong> ${getVectorizationStatusText(file.vectorizationStatus)}</p>
+                    </div>
+                    <button onclick="downloadFile(${file.id}, '${file.fileName}')">下载</button>
+                    <button onclick="vectorizeFile(${file.id})" style="background-color: #28a745;">向量化</button>
+                    <button onclick="deleteFile(${file.id})" style="background-color: #dc3545;">删除</button>
+                </div>
+            `).join('');
+
+            fileListDiv.innerHTML = html;
+        }
+
+        // 下载文件
+        function downloadFile(id, fileName) {
+            const link = document.createElement('a');
+            link.href = `${API_BASE}/download/${id}`;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // 删除文件
+        async function deleteFile(id) {
+            if (!confirm('确定要删除这个文件吗？')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/${id}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+                
+                if (result.code === 200) {
+                    alert('删除成功');
+                    loadFileList();
+                } else {
+                    alert(`删除失败: ${result.message}`);
+                }
+
+            } catch (error) {
+                alert(`删除失败: ${error.message}`);
+            }
+        }
+
+        // 显示响应信息
+        function showResponse(element, message, type) {
+            element.textContent = message;
+            element.className = `response ${type}`;
+            element.style.display = 'block';
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 向量搜索
+        async function vectorSearch() {
+            const query = document.getElementById('vectorSearchQuery').value;
+            const responseDiv = document.getElementById('searchResponse');
+
+            if (!query.trim()) {
+                showResponse(responseDiv, '请输入搜索内容', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/search-similar?query=${encodeURIComponent(query)}&topK=5&threshold=0.7`);
+                const result = await response.json();
+
+                showResponse(responseDiv, JSON.stringify(result, null, 2),
+                    result.code === 200 ? 'success' : 'error');
+
+                if (result.code === 200) {
+                    displayVectorSearchResults(result.data);
+                }
+
+            } catch (error) {
+                showResponse(responseDiv, `向量搜索失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 显示向量搜索结果
+        function displayVectorSearchResults(documents) {
+            const fileListDiv = document.getElementById('fileList');
+
+            if (!documents || documents.length === 0) {
+                fileListDiv.innerHTML = '<p>未找到相关文档</p>';
+                return;
+            }
+
+            const html = documents.map((doc, index) => `
+                <div class="file-item">
+                    <h4>搜索结果 ${index + 1}</h4>
+                    <div class="file-info">
+                        <p><strong>内容:</strong> ${doc.text.substring(0, 200)}${doc.text.length > 200 ? '...' : ''}</p>
+                        <p><strong>来源文件:</strong> ${doc.metadata.fileName || '未知'}</p>
+                        <p><strong>文件类型:</strong> ${doc.metadata.fileType || '未知'}</p>
+                        <p><strong>片段索引:</strong> ${doc.metadata.chunkIndex || 0}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            fileListDiv.innerHTML = html;
+        }
+
+        // 向量化文件
+        async function vectorizeFile(id) {
+            if (!confirm('确定要对这个文件进行向量化吗？')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/${id}/vectorize`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (result.code === 200) {
+                    alert('向量化成功');
+                    loadFileList();
+                } else {
+                    alert(`向量化失败: ${result.message}`);
+                }
+
+            } catch (error) {
+                alert(`向量化失败: ${error.message}`);
+            }
+        }
+
+        // 获取向量化状态文本
+        function getVectorizationStatusText(status) {
+            switch (status) {
+                case 0: return '未向量化';
+                case 1: return '向量化中';
+                case 2: return '向量化成功';
+                case 3: return '向量化失败';
+                default: return '未知状态';
+            }
+        }
+
+        // 页面加载时获取文件列表
+        window.onload = function() {
+            loadFileList();
+        };
+    </script>
+</body>
+</html>
