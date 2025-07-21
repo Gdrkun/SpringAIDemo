@@ -59,7 +59,7 @@ spring:
         vectorstore:
             qdrant:
                 host: localhost
-                port: 6334
+                port: 7002
                 api-key: test123
                 collection-name: spring_ai
                 use-tls: false

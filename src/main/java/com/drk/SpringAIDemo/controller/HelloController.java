@@ -102,7 +102,12 @@ public class HelloController {
 
         return chatClient.prompt()
                 .user(inputMsg)
-                .advisors(qaAdvisor,MessageChatMemoryAdvisor.builder(inMySqlChatMemory).order(10).conversationId(conversationId).scheduler(Schedulers.boundedElastic()).build())
+                .advisors(
+                    // MessageChatMemoryAdvisor 先执行，order值较小，优先级较高，存储原始用户消息
+                    MessageChatMemoryAdvisor.builder(inMySqlChatMemory).order(1).conversationId(conversationId).scheduler(Schedulers.boundedElastic()).build(),
+                    // qaAdvisor 后执行，order值较大，优先级较低，添加上下文信息但不影响存储
+                    qaAdvisor
+                )
                 .call()
                 .content();
     }

@@ -33,21 +33,21 @@ public class ChatConfig {
     @Bean
     public QuestionAnswerAdvisor qaAdvisor(VectorStore vectorStore) {
         PromptTemplate qaPromptTemplate = PromptTemplate.builder()
-                .renderer(StTemplateRenderer.builder().startDelimiterToken('<').endDelimiterToken('>').build()).template("""
-            <query>
+                .renderer(StTemplateRenderer.builder().startDelimiterToken('<').endDelimiterToken('>').build())
+                .template("""
+        请根据以下信息回答用户问题，如无相关内容请使用你自己的知识作答：
 
-            Context information is below.
+        <question_answer_context>
 
-			---------------------
-			<question_answer_context>
-			---------------------
+        问题：<query>
+        """)
+                .build();
 
-			Given the context information and no prior knowledge, answer the query.
-            """).build();
 
         return QuestionAnswerAdvisor.builder(vectorStore)
                 .searchRequest(SearchRequest.builder().similarityThreshold(0.6).topK(6).build())
                 .promptTemplate(qaPromptTemplate)
+                .order(5) // 设置较大的order值，确保在MessageChatMemoryAdvisor之后执行
                 .build();
     }
 

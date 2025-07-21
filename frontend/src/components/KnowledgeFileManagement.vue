@@ -5,7 +5,7 @@
         <div class="card-header">
           <span>知识文件管理</span>
           <div>
-            <el-button type="primary" @click="showUploadModal = true">上传文件</el-button>
+            <el-button type="primary" @click="showUpload()">上传文件</el-button>
             <el-button @click="$emit('backToChat')">返回对话</el-button>
           </div>
         </div>
@@ -117,6 +117,12 @@ const handleFileChange = (file: UploadFile) => {
 };
 
 const handleFileRemove = () => {
+  newFile.value = null;
+};
+
+const showUpload = () => {
+  showUploadModal.value = true;
+  uploadDescription.value='';
   newFile.value = null;
 };
 

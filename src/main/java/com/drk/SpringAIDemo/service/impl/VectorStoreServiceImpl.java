@@ -16,6 +16,7 @@ import org.springframework.util.CollectionUtils;
 
 import java.io.File;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -55,9 +56,11 @@ public class VectorStoreServiceImpl implements VectorStoreService {
                 log.warn("文件处理后没有生成文档片段: {}", fileEntity.getFileName());
                 return false;
             }
+            //存储时给对应的向量数据添加文件ID，方便后续删除和查找
+            List<Document> documentWithIds = documents.stream().peek(document -> document.getMetadata().put("fileId", fileEntity.getId().toString())).toList();
 
             // 存储到向量数据库
-            boolean success = storeDocuments(documents);
+            boolean success = storeDocuments(documentWithIds);
 
             if (success) {
                 log.info("文件向量化成功: {}, 存储文档片段数: {}",
@@ -177,7 +180,7 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             SearchRequest searchRequest = SearchRequest.builder()
                     .query("*") // 通配符查询
                     .topK(1000) // 设置一个较大的数量
-                    .filterExpression("fileId == " + fileId) // 元数据过滤
+                    .filterExpression("fileId == '" + fileId.toString() + "'") // 元数据过滤
                     .build();
 
             return vectorStore.similaritySearch(searchRequest);
@@ -235,18 +238,13 @@ public class VectorStoreServiceImpl implements VectorStoreService {
      */
     private boolean deleteDocuments(List<Document> documents) {
         try {
-            // 注意：这里的实现取决于具体的向量数据库
-            // 对于 Qdrant，可能需要使用文档的 ID 进行删除
-            // 这里提供一个通用的实现思路
-            
             List<String> documentIds = documents.stream()
-                    .map(doc -> (String) doc.getMetadata().get("id"))
-                    .filter(id -> id != null)
-                    .collect(Collectors.toList());
+                    .map(Document::getId)
+                    .toList();
 
             if (!documentIds.isEmpty()) {
                 // 调用向量数据库的删除方法
-                // vectorStore.delete(documentIds); // 这个方法可能不存在，需要根据实际API调整
+                vectorStore.delete(documentIds);
                 log.info("删除了 {} 个文档", documentIds.size());
             }
 
