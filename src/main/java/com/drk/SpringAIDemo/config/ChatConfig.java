@@ -25,8 +25,8 @@ import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 public class ChatConfig {
 
     private final String DEFAULT_PROMPT = """
-    You are a smart Chinese AI assistant that can use available tools and vector store documents to answer user questions.
-    If the provided documents are insufficient or irrelevant, use your built-in knowledge to provide a comprehensive answer.
+    You are a smart Chinese AI assistant. Only use tools if the user explicitly requests a tool-specific action (e.g., asking for the current date or search). Otherwise, answer based on internal knowledge and documents.
+    
     """;
 
 
@@ -63,7 +63,7 @@ public class ChatConfig {
                 .defaultSystem(DEFAULT_PROMPT)
                 .defaultToolCallbacks(tools)
                 .defaultAdvisors(new SimpleLoggerAdvisor(),qaAdvisor)
-                .defaultTools(dateTimeTools, timingTools)
+                //.defaultTools(dateTimeTools, timingTools)
                 .build();
     }
 }

@@ -17,9 +17,8 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * @Author drk
@@ -94,15 +93,22 @@ public class InMySqlChatMemory implements ChatMemory {
     }
 
     /**
-     * 获取所有对话ID列表
+     * 获取所有用户对话列表
      */
-    public List<String> findConversationIds() {
+    public List<Map<String, Object>>  findConversationIds() {
         return chatMessageService.list()
                 .stream()
-                .map(ChatMessageEntity::getConversationId)
-                .distinct()
-                .sorted()
-                .toList();
+                .filter(chatMessageEntity -> chatMessageEntity.getMessageType().equals("USER"))
+                .collect(Collectors.groupingBy(ChatMessageEntity::getConversationId))
+                .entrySet()
+                .stream()
+                .map(entry -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("conversationId", entry.getKey());
+                    map.put("messages", entry.getValue());
+                    return map;
+                })
+                .collect(Collectors.toList());
     }
 
     /**

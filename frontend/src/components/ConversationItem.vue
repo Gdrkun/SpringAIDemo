@@ -1,9 +1,17 @@
 <template>
-  <div 
-    class="conversation-item" 
+  <div
+    class="conversation-item"
     :class="{ active: isActive }"
     @click="selectConversation"
   >
+    <div class="conversation-avatar">
+      <div class="avatar-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7A1,1 0 0,0 14,8H18A1,1 0 0,0 19,7V5.73C18.4,5.39 18,4.74 18,4A2,2 0 0,1 20,2A2,2 0 0,1 22,4C22,4.74 21.6,5.39 21,5.73V7A3,3 0 0,1 18,10H14A3,3 0 0,1 11,7V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7,10A2,2 0 0,1 9,12A2,2 0 0,1 7,14A2,2 0 0,1 5,12A2,2 0 0,1 7,10M17,10A2,2 0 0,1 19,12A2,2 0 0,1 17,14A2,2 0 0,1 15,12A2,2 0 0,1 17,10M12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12A2,2 0 0,1 12,10Z"/>
+        </svg>
+      </div>
+    </div>
+
     <div class="conversation-content">
       <div class="conversation-title">{{ conversation.title }}</div>
       <div class="conversation-preview" v-if="conversation.lastMessage">
@@ -13,8 +21,8 @@
         {{ conversation.lastMessageTime ? formatTime(conversation.lastMessageTime) : '未知时间' }}
       </div>
     </div>
-    
-    <button 
+
+    <button
       class="delete-btn"
       @click.stop="deleteConversation"
       title="删除对话"
@@ -77,26 +85,30 @@ const formatTime = (time: Date): string => {
 .conversation-item {
   display: flex;
   align-items: center;
-  padding: 0.75rem;
+  gap: 0.75rem;
+  padding: 1rem;
   margin: 0.25rem 0;
-  border-radius: 0.5rem;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid transparent;
   position: relative;
-  background: white;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
 
 .conversation-item:hover {
-  background: #f8fafc;
-  border-color: #e2e8f0;
-  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(79, 70, 229, 0.2);
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .conversation-item.active {
-  background: #eff6ff;
-  border-color: #3b82f6;
-  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%);
+  border-color: #4f46e5;
+  box-shadow: 0 4px 20px rgba(79, 70, 229, 0.2);
 }
 
 .conversation-item.active::before {
@@ -106,37 +118,63 @@ const formatTime = (time: Date): string => {
   top: 0;
   bottom: 0;
   width: 3px;
-  background: #3b82f6;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
   border-radius: 0 2px 2px 0;
+}
+
+.conversation-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.conversation-item:hover .conversation-avatar {
+  transform: scale(1.05);
+}
+
+.avatar-icon {
+  width: 20px;
+  height: 20px;
+  color: white;
 }
 
 .conversation-content {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .conversation-title {
   font-weight: 600;
-  color: #1e293b;
-  font-size: 0.9rem;
-  margin-bottom: 0.25rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.conversation-preview {
-  color: #64748b;
-  font-size: 0.8rem;
-  margin-bottom: 0.25rem;
+  font-size: 0.95rem;
+  color: #1f2937;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.3;
 }
 
+.conversation-preview {
+  color: #6b7280;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+  opacity: 0.8;
+}
+
 .conversation-time {
-  color: #94a3b8;
+  color: #9ca3af;
   font-size: 0.75rem;
   font-weight: 500;
 }
@@ -145,13 +183,13 @@ const formatTime = (time: Date): string => {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0.375rem;
-  border-radius: 0.25rem;
-  color: #94a3b8;
-  transition: all 0.2s;
+  padding: 0.5rem;
+  border-radius: 8px;
+  color: #9ca3af;
+  transition: all 0.2s ease;
   opacity: 0;
   transform: scale(0.9);
-  margin-left: 0.5rem;
+  flex-shrink: 0;
 }
 
 .conversation-item:hover .delete-btn {
@@ -160,8 +198,8 @@ const formatTime = (time: Date): string => {
 }
 
 .delete-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
 }
 
 .delete-btn svg {
@@ -169,32 +207,12 @@ const formatTime = (time: Date): string => {
   height: 16px;
 }
 
-/* 活跃状态下的删除按钮 */
 .conversation-item.active .delete-btn {
   opacity: 0.7;
 }
 
 .conversation-item.active:hover .delete-btn {
   opacity: 1;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .conversation-item {
-    padding: 0.625rem;
-  }
-  
-  .conversation-title {
-    font-size: 0.85rem;
-  }
-  
-  .conversation-preview {
-    font-size: 0.75rem;
-  }
-  
-  .conversation-time {
-    font-size: 0.7rem;
-  }
 }
 
 /* 动画效果 */
@@ -213,29 +231,18 @@ const formatTime = (time: Date): string => {
   }
 }
 
-/* 加载状态 */
-.conversation-item.loading {
-  pointer-events: none;
-  opacity: 0.6;
-}
-
-.conversation-item.loading::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-  animation: shimmer 1.5s infinite;
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .title-text {
+    font-size: 13px;
   }
-  100% {
-    transform: translateX(100%);
+
+  .preview-text {
+    font-size: 11px;
+  }
+
+  .time-text {
+    font-size: 10px;
   }
 }
 </style>

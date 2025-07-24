@@ -45,14 +45,23 @@ spring:
             chat:
                 completions-path: /chat/completions
                 options:
-                    model: gemini-2.0-flash
+                    model: gemini-2.5-flash-lite
         mcp:
             client:
                 enabled: true
-                name: mcp-client
+                name: spring-ai-mcp-client
                 type: ASYNC
+                toolcallback:
+                    enabled: true
                 studio:
-                    servers-configuration: classpath:/mcp/baiduMapMcp.json
+                    servers-configuration: |
+                        classpath:/mcp/FetchMcp.json
+                        classpath:/mcp/BaiduMapMcp.json
+                        classpath:/mcp/Context7Mcp.json
+                        classpath:/mcp/PlaywrightMcp.json
+                        classpath:/mcp/SequentialThinkingMcp.json
+                        classpath:/mcp/AdvisorMcp.json
+                        classpath:/mcp/TimeMcp.json
             server:
                 enabled: true
                 type: ASYNC

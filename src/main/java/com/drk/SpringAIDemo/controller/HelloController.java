@@ -1,5 +1,6 @@
 package com.drk.SpringAIDemo.controller;
 
+import com.drk.SpringAIDemo.entity.ChatMessageEntity;
 import com.drk.SpringAIDemo.pojo.ActorsFilms;
 
 import com.drk.SpringAIDemo.tools.DateTimeTools;
@@ -8,6 +9,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
@@ -24,6 +26,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
 import com.drk.SpringAIDemo.component.InMySqlChatMemory;
+import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
@@ -100,9 +103,11 @@ public class HelloController {
     @GetMapping(value = "/chatMemory")
     public String chat(@RequestParam String conversationId, @RequestParam String inputMsg) {
 
-        return chatClient.prompt()
+        return chatClient
+                .prompt()
                 .user(inputMsg)
                 .advisors(
+                        new SimpleLoggerAdvisor(),
                     // MessageChatMemoryAdvisor 先执行，order值较小，优先级较高，存储原始用户消息
                     MessageChatMemoryAdvisor.builder(inMySqlChatMemory).order(1).conversationId(conversationId).scheduler(Schedulers.boundedElastic()).build(),
                     // qaAdvisor 后执行，order值较大，优先级较低，添加上下文信息但不影响存储
@@ -195,7 +200,7 @@ public class HelloController {
      * 获取所有对话ID列表
      */
     @GetMapping("/conversations")
-    public List<String> getConversations() {
+    public List<Map<String, Object>>  getConversations() {
         return inMySqlChatMemoryComponent.findConversationIds();
     }
 

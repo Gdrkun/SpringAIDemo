@@ -103,7 +103,7 @@ export const chatAPI = {
   },
 
   // 获取所有对话列表
-  getConversations: async (): Promise<string[]> => {
+  getConversations: async (): Promise<Array<{conversationId: string, messages: any[]}>> => {
     try {
       const response = await apiClient.get('/chat/conversations')
       return response.data
