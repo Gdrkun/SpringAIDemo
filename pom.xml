@@ -85,6 +85,12 @@
 			<groupId>org.springframework.ai</groupId>
 			<artifactId>spring-ai-tika-document-reader</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>org.bytedeco</groupId>
+			<artifactId>javacv-platform</artifactId>
+			<version>1.5.10</version> <!-- 推荐使用最新稳定版本 -->
+		</dependency>
+
 
 		<!--		<dependency>-->
 <!--			<groupId>org.springframework.ai</groupId>-->

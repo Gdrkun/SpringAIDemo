@@ -1,0 +1,12 @@
+{
+  "_comment": "安装命令 npm install -g howtocook-mcp，用于查询菜谱",
+  "mcpServers": {
+    "howtocook-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "howtocook-mcp"
+      ]
+    }
+  }
+}

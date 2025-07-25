@@ -23,6 +23,7 @@ import org.springframework.ai.image.*;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
 import com.drk.SpringAIDemo.component.InMySqlChatMemory;
@@ -53,6 +54,7 @@ public class HelloController {
     private final ChatMemory inMySqlChatMemory;
     private final InMySqlChatMemory inMySqlChatMemoryComponent;
     private final QuestionAnswerAdvisor qaAdvisor;
+    private final ToolCallbackProvider toolCallbackProvider;
 
     // 构造函数现在非常干净，只注入它直接需要的 Bean
     public HelloController(ChatClient chatClient, // 直接注入由 ChatConfig 创建好的 Bean
@@ -60,14 +62,17 @@ public class HelloController {
                            ImageModel imageModel,
                            @Qualifier("ollamaEmbeddingModel") EmbeddingModel embeddingModel,
                            @Qualifier("InMySqlChatMemory") ChatMemory inMySqlChatMemory,
-                           InMySqlChatMemory inMySqlChatMemoryComponent,QuestionAnswerAdvisor qaAdvisor) {
+                           InMySqlChatMemory inMySqlChatMemoryComponent,
+                           QuestionAnswerAdvisor qaAdvisor,
+                           ToolCallbackProvider toolCallbackProvider) {
         this.chatClient = chatClient;
         this.chatModel = chatModel;
         this.imageModel = imageModel;
         this.embeddingModel = embeddingModel;
         this.inMySqlChatMemory = inMySqlChatMemory;
         this.inMySqlChatMemoryComponent = inMySqlChatMemoryComponent;
-        this.qaAdvisor=qaAdvisor;
+        this.qaAdvisor = qaAdvisor;
+        this.toolCallbackProvider = toolCallbackProvider;
     }
 
     @GetMapping("/ai/embedding")
@@ -108,11 +113,13 @@ public class HelloController {
                 .user(inputMsg)
                 .advisors(
                         new SimpleLoggerAdvisor(),
-                    // MessageChatMemoryAdvisor 先执行，order值较小，优先级较高，存储原始用户消息
-                    MessageChatMemoryAdvisor.builder(inMySqlChatMemory).order(1).conversationId(conversationId).scheduler(Schedulers.boundedElastic()).build(),
-                    // qaAdvisor 后执行，order值较大，优先级较低，添加上下文信息但不影响存储
-                    qaAdvisor
+                        // MessageChatMemoryAdvisor 先执行，order值较小，优先级较高，存储原始用户消息
+                        MessageChatMemoryAdvisor.builder(inMySqlChatMemory).order(1).conversationId(conversationId).scheduler(Schedulers.boundedElastic()).build(),
+                        // qaAdvisor 后执行，order值较大，优先级较低，添加上下文信息但不影响存储
+                        qaAdvisor
                 )
+                // 重新应用在ChatClient中配置的默认工具回调，以确保MCP和本地工具都生效
+                .toolCallbacks(this.toolCallbackProvider)
                 .call()
                 .content();
     }

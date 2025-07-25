@@ -6,6 +6,7 @@ logging:
         org.springframework.ai.chat.client.advisor: DEBUG
         org.springframework.ai: DEBUG
         com.drk.SpringAIDemo: DEBUG
+        reactor.netty.http.client: DEBUG
     pattern:
         console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
@@ -54,14 +55,22 @@ spring:
                 toolcallback:
                     enabled: true
                 studio:
-                    servers-configuration: |
-                        classpath:/mcp/FetchMcp.json
-                        classpath:/mcp/BaiduMapMcp.json
-                        classpath:/mcp/Context7Mcp.json
-                        classpath:/mcp/PlaywrightMcp.json
-                        classpath:/mcp/SequentialThinkingMcp.json
-                        classpath:/mcp/AdvisorMcp.json
-                        classpath:/mcp/TimeMcp.json
+                    connections:
+                        howtocook:
+                            command: npx
+                            args: -y,howtocook-mcp
+                        time:
+                            command: uvx
+                            args: mcp-server-time
+#                     servers-configuration: >-
+#                         classpath:/mcp/FetchMcp.json,
+#                         classpath:/mcp/BaiduMapMcp.json,
+#                         classpath:/mcp/Context7Mcp.json,
+#                         classpath:/mcp/PlaywrightMcp.json,
+#                         classpath:/mcp/SequentialThinkingMcp.json,
+#                         classpath:/mcp/AdvisorMcp.json,
+#                         classpath:/mcp/TimeMcp.json,
+#                         classpath:/mcp/HowToCookMcp.json
             server:
                 enabled: true
                 type: ASYNC
