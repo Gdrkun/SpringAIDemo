@@ -54,7 +54,7 @@ public class HelloController {
     private final ChatMemory inMySqlChatMemory;
     private final InMySqlChatMemory inMySqlChatMemoryComponent;
     private final QuestionAnswerAdvisor qaAdvisor;
-    private final ToolCallbackProvider toolCallbackProvider;
+    //private final ToolCallbackProvider toolCallbackProvider;
 
     // 构造函数现在非常干净，只注入它直接需要的 Bean
     public HelloController(ChatClient chatClient, // 直接注入由 ChatConfig 创建好的 Bean
@@ -63,8 +63,7 @@ public class HelloController {
                            @Qualifier("ollamaEmbeddingModel") EmbeddingModel embeddingModel,
                            @Qualifier("InMySqlChatMemory") ChatMemory inMySqlChatMemory,
                            InMySqlChatMemory inMySqlChatMemoryComponent,
-                           QuestionAnswerAdvisor qaAdvisor,
-                           ToolCallbackProvider toolCallbackProvider) {
+                           QuestionAnswerAdvisor qaAdvisor) {
         this.chatClient = chatClient;
         this.chatModel = chatModel;
         this.imageModel = imageModel;
@@ -72,7 +71,6 @@ public class HelloController {
         this.inMySqlChatMemory = inMySqlChatMemory;
         this.inMySqlChatMemoryComponent = inMySqlChatMemoryComponent;
         this.qaAdvisor = qaAdvisor;
-        this.toolCallbackProvider = toolCallbackProvider;
     }
 
     @GetMapping("/ai/embedding")
@@ -119,7 +117,6 @@ public class HelloController {
                         qaAdvisor
                 )
                 // 重新应用在ChatClient中配置的默认工具回调，以确保MCP和本地工具都生效
-                .toolCallbacks(this.toolCallbackProvider)
                 .call()
                 .content();
     }

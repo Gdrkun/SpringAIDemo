@@ -51,14 +51,29 @@ spring:
             client:
                 enabled: true
                 name: spring-ai-mcp-client
-                type: ASYNC
+                type: SYNC
                 toolcallback:
                     enabled: true
                 studio:
                     connections:
+                        brave-search:
+                            command: npx
+                            args:
+                              - "-y"
+                              - "@modelcontextprotocol/server-brave-search"
+                            env:
+                              BRAVE_API_KEY: ${BRAVE_API_KEY}
+                        filesystem:
+                            command: npx
+                            args:
+                                - "-y"
+                                - "@modelcontextprotocol/server-filesystem"
+                                - "./"
                         howtocook:
                             command: npx
-                            args: -y,howtocook-mcp
+                            args:
+                                - "y"
+                                - "@worryzyy/howtocook-mcp"
                         time:
                             command: uvx
                             args: mcp-server-time
@@ -71,9 +86,9 @@ spring:
 #                         classpath:/mcp/AdvisorMcp.json,
 #                         classpath:/mcp/TimeMcp.json,
 #                         classpath:/mcp/HowToCookMcp.json
-            server:
-                enabled: true
-                type: ASYNC
+#             server:
+#                 enabled: true
+#                 type: ASYNC
         vectorstore:
             qdrant:
                 host: localhost
