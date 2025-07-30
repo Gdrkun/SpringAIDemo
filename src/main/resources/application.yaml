@@ -46,46 +46,17 @@ spring:
             chat:
                 completions-path: /chat/completions
                 options:
-                    model: gemini-2.5-flash-lite
+                    model: gemini-2.5-flash
         mcp:
             client:
+                toolcallback:
+                    enabled: true
                 enabled: true
                 name: spring-ai-mcp-client
                 type: SYNC
-                toolcallback:
-                    enabled: true
-                studio:
-                    connections:
-                        brave-search:
-                            command: npx
-                            args:
-                              - "-y"
-                              - "@modelcontextprotocol/server-brave-search"
-                            env:
-                              BRAVE_API_KEY: ${BRAVE_API_KEY}
-                        filesystem:
-                            command: npx
-                            args:
-                                - "-y"
-                                - "@modelcontextprotocol/server-filesystem"
-                                - "./"
-                        howtocook:
-                            command: npx
-                            args:
-                                - "y"
-                                - "@worryzyy/howtocook-mcp"
-                        time:
-                            command: uvx
-                            args: mcp-server-time
-#                     servers-configuration: >-
-#                         classpath:/mcp/FetchMcp.json,
-#                         classpath:/mcp/BaiduMapMcp.json,
-#                         classpath:/mcp/Context7Mcp.json,
-#                         classpath:/mcp/PlaywrightMcp.json,
-#                         classpath:/mcp/SequentialThinkingMcp.json,
-#                         classpath:/mcp/AdvisorMcp.json,
-#                         classpath:/mcp/TimeMcp.json,
-#                         classpath:/mcp/HowToCookMcp.json
+                request-timeout: 60s
+                stdio:
+                    servers-configuration: classpath:/mcp-servers-config.json
 #             server:
 #                 enabled: true
 #                 type: ASYNC
@@ -113,7 +84,7 @@ mybatis-plus:
 # 文件上传配置
 file:
   upload:
-    path: C:\SpringAIDemo\uploads  # 文件上传路径
+    path: C:/SpringAIDemo/uploads  # 文件上传路径
     max-file-size: 100MB  # 单个文件最大大小
     max-request-size: 100MB  # 请求最大大小
 

@@ -1,6 +1,5 @@
 package com.drk.SpringAIDemo.controller;
 
-import com.drk.SpringAIDemo.entity.ChatMessageEntity;
 import com.drk.SpringAIDemo.pojo.ActorsFilms;
 
 import com.drk.SpringAIDemo.tools.DateTimeTools;
@@ -23,13 +22,12 @@ import org.springframework.ai.image.*;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
 import com.drk.SpringAIDemo.component.InMySqlChatMemory;
-import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -41,11 +39,10 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/chat")
-public class HelloController {
+public class ChatController {
 
-    private static final Logger logger = LoggerFactory.getLogger(HelloController.class);
+    private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
 
-    // 移除 DEFAULT_PROMPT，因为它已经移到 ChatConfig 中了
 
     private final ChatClient chatClient;
     private final ChatModel chatModel;
@@ -54,16 +51,16 @@ public class HelloController {
     private final ChatMemory inMySqlChatMemory;
     private final InMySqlChatMemory inMySqlChatMemoryComponent;
     private final QuestionAnswerAdvisor qaAdvisor;
-    //private final ToolCallbackProvider toolCallbackProvider;
+    //private final SyncMcpToolCallbackProvider syncMcpToolCallbackProvider;
 
     // 构造函数现在非常干净，只注入它直接需要的 Bean
-    public HelloController(ChatClient chatClient, // 直接注入由 ChatConfig 创建好的 Bean
-                           @Qualifier("openAiChatModel") ChatModel chatModel,
-                           ImageModel imageModel,
-                           @Qualifier("ollamaEmbeddingModel") EmbeddingModel embeddingModel,
-                           @Qualifier("InMySqlChatMemory") ChatMemory inMySqlChatMemory,
-                           InMySqlChatMemory inMySqlChatMemoryComponent,
-                           QuestionAnswerAdvisor qaAdvisor) {
+    public ChatController(ChatClient chatClient, // 直接注入由 ChatConfig 创建好的 Bean
+                          @Qualifier("openAiChatModel") ChatModel chatModel,
+                          ImageModel imageModel,
+                          @Qualifier("ollamaEmbeddingModel") EmbeddingModel embeddingModel,
+                          @Qualifier("InMySqlChatMemory") ChatMemory inMySqlChatMemory,
+                          QuestionAnswerAdvisor qaAdvisor,
+                          InMySqlChatMemory inMySqlChatMemoryComponent) {
         this.chatClient = chatClient;
         this.chatModel = chatModel;
         this.imageModel = imageModel;
@@ -71,6 +68,8 @@ public class HelloController {
         this.inMySqlChatMemory = inMySqlChatMemory;
         this.inMySqlChatMemoryComponent = inMySqlChatMemoryComponent;
         this.qaAdvisor = qaAdvisor;
+        //this.syncMcpToolCallbackProvider=syncMcpToolCallbackProvider;
+
     }
 
     @GetMapping("/ai/embedding")
@@ -113,7 +112,7 @@ public class HelloController {
                         new SimpleLoggerAdvisor(),
                         // MessageChatMemoryAdvisor 先执行，order值较小，优先级较高，存储原始用户消息
                         MessageChatMemoryAdvisor.builder(inMySqlChatMemory).order(1).conversationId(conversationId).scheduler(Schedulers.boundedElastic()).build(),
-                        // qaAdvisor 后执行，order值较大，优先级较低，添加上下文信息但不影响存储
+                        //qaAdvisor 后执行，order值较大，优先级较低，添加上下文信息但不影响存
                         qaAdvisor
                 )
                 // 重新应用在ChatClient中配置的默认工具回调，以确保MCP和本地工具都生效
@@ -152,6 +151,7 @@ public class HelloController {
         // 使用chatClient，它已经配置了MCP工具
         String response = this.chatClient.prompt()
                 .user(msg)
+                .advisors(new SimpleLoggerAdvisor())
                 .call()
                 .content();
 
@@ -184,7 +184,6 @@ public class HelloController {
     //    Message sysMessage = new SystemMessage(DEFAULT_PROMPT);
     //    Message userMessage = new UserMessage(msg);
     //    return this.chatClient.prompt(new Prompt(sysMessage, userMessage)).user(msg).stream().content();
-    //
     //
     //}
 
