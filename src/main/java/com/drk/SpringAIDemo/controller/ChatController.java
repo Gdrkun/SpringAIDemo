@@ -25,6 +25,8 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
 import com.drk.SpringAIDemo.component.InMySqlChatMemory;
+import org.springframework.http.MediaType;
+import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.HashMap;
@@ -39,6 +41,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/chat")
+@CrossOrigin
 public class ChatController {
 
     private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
@@ -102,8 +105,9 @@ public class ChatController {
     }
 
 
-    @GetMapping(value = "/chatMemory")
-    public String chat(@RequestParam String conversationId, @RequestParam String inputMsg) {
+    @GetMapping(value = "/chatMemory", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @CrossOrigin
+    public Flux<String> chat(@RequestParam String conversationId, @RequestParam String inputMsg) {
 
         return chatClient
                 .prompt()
@@ -116,8 +120,14 @@ public class ChatController {
                         qaAdvisor
                 )
                 // 重新应用在ChatClient中配置的默认工具回调，以确保MCP和本地工具都生效
-                .call()
-                .content();
+                .stream()
+                .content()
+                .concatWith(Flux.just("[DONE]")) // 添加完成标记
+                .onErrorResume(e -> {
+                    logger.error("Error during chat processing for conversationId: {}", conversationId, e);
+                    // 将错误信息包装成 SSE 事件发送到前端
+                    return Flux.just("data: {\"error\": \"An error occurred: " + e.getMessage() + "\"}\n\n");
+                });
     }
     //@GetMapping(value = "/chatMemory")
     //public String chat(@RequestParam String conversationId, @RequestParam String inputMsg) {

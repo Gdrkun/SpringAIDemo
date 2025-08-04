@@ -24,51 +24,51 @@ const apiClient = axios.create({
 
 // 请求拦截器
 apiClient.interceptors.request.use(
-  (config) => {
-    console.log('发送请求:', config)
-    return config
-  },
-  (error) => {
-    console.error('请求错误:', error)
-    return Promise.reject(error)
-  }
+    (config) => {
+      console.log('发送请求:', config)
+      return config
+    },
+    (error) => {
+      console.error('请求错误:', error)
+      return Promise.reject(error)
+    }
 )
 
 // 响应拦截器
 apiClient.interceptors.response.use(
-  (response) => {
-    console.log('收到响应:', response)
-    return response
-  },
-  (error) => {
-    console.error('响应错误:', error)
+    (response) => {
+      console.log('收到响应:', response)
+      return response
+    },
+    (error) => {
+      console.error('响应错误:', error)
 
-    // 处理不同类型的错误
-    if (error.response) {
-      // 服务器返回错误状态码
-      const { status, data } = error.response
-      switch (status) {
-        case 400:
-          throw new ApiErrorClass('请求参数错误', 400, status)
-        case 401:
-          throw new ApiErrorClass('未授权访问', 401, status)
-        case 403:
-          throw new ApiErrorClass('禁止访问', 403, status)
-        case 404:
-          throw new ApiErrorClass('接口不存在', 404, status)
-        case 500:
-          throw new ApiErrorClass('服务器内部错误', 500, status)
-        default:
-          throw new ApiErrorClass(data?.message || `请求失败 (${status})`, data?.code, status)
+      // 处理不同类型的错误
+      if (error.response) {
+        // 服务器返回错误状态码
+        const { status, data } = error.response
+        switch (status) {
+          case 400:
+            throw new ApiErrorClass('请求参数错误', 400, status)
+          case 401:
+            throw new ApiErrorClass('未授权访问', 401, status)
+          case 403:
+            throw new ApiErrorClass('禁止访问', 403, status)
+          case 404:
+            throw new ApiErrorClass('接口不存在', 404, status)
+          case 500:
+            throw new ApiErrorClass('服务器内部错误', 500, status)
+          default:
+            throw new ApiErrorClass(data?.message || `请求失败 (${status})`, data?.code, status)
+        }
+      } else if (error.request) {
+        // 网络错误
+        throw new ApiErrorClass('网络连接失败，请检查网络设置')
+      } else {
+        // 其他错误
+        throw new ApiErrorClass(error.message || '未知错误')
       }
-    } else if (error.request) {
-      // 网络错误
-      throw new ApiErrorClass('网络连接失败，请检查网络设置')
-    } else {
-      // 其他错误
-      throw new ApiErrorClass(error.message || '未知错误')
     }
-  }
 )
 
 // API服务方法
@@ -134,16 +134,114 @@ export const chatAPI = {
     }
   },
 
-  // 发送流式消息 (暂时使用普通接口，后续可以实现SSE)
-  sendStreamMessage: async (message: string): Promise<string> => {
-    try {
-      // 这里可以实现Server-Sent Events (SSE)
-      // 目前先使用普通接口
-      return await chatAPI.sendMessage(message)
-    } catch (error) {
-      console.error('发送流式消息失败:', error)
-      throw error
-    }
+  // 流式消息方法 - 使用EventSource处理SSE
+  sendMessageWithConversationStream: async (
+    conversationId: string,
+    message: string,
+    onDelta: (chunk: string) => void
+  ): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      // 构造SSE URL - 确保使用正确的路径
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+      const url = `${baseUrl}/chat/chatMemory?conversationId=${encodeURIComponent(conversationId)}&inputMsg=${encodeURIComponent(message)}`;
+      
+      console.log('Connecting to SSE stream:', url);
+      
+      // 创建EventSource连接
+      const eventSource = new EventSource(url);
+      let finished = false; // 标记流是否已完成
+      
+      // 添加onopen事件处理
+      eventSource.onopen = (event) => {
+        console.log('SSE connection opened:', event);
+      };
+      
+      eventSource.onmessage = (event) => {
+        // 解析SSE数据，移除"data:"前缀
+        let data = event.data;
+        if (data.startsWith('data:')) {
+          data = data.substring(5).trim();
+        }
+        
+        // 检查是否是结束标记
+        if (data === '[DONE]') {
+          finished = true;
+          eventSource.close();
+          resolve();
+          return;
+        }
+        
+        // 处理空数据
+        if (data) {
+          // 处理转义字符
+          data = data.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
+          onDelta(data);
+        }
+      };
+      
+      eventSource.onerror = (error) => {
+        console.error('Stream error event:', error);
+        console.log('EventSource readyState:', eventSource.readyState);
+        
+        // 如果流已完成，忽略错误（这是正常关闭连接的情况）
+        if (finished) {
+          console.log('Stream already finished, ignoring error');
+          resolve();
+          return;
+        }
+        
+        // 检查EventSource状态
+        if (eventSource.readyState === EventSource.CLOSED) {
+          // 连接已关闭，认为是正常结束
+          console.log('EventSource connection closed');
+          finished = true;
+          resolve();
+          return;
+        }
+        
+        // 检查是否是连接错误
+        if (eventSource.readyState === EventSource.CONNECTING) {
+          // 连接错误
+          console.error('Stream connection error:', error);
+          finished = true;
+          eventSource.close();
+          reject(new Error('流式传输连接错误'));
+          return;
+        }
+        
+        // 其他错误情况
+        console.error('Stream error:', error);
+        finished = true;
+        eventSource.close();
+        reject(new Error('流式传输过程中发生错误'));
+      };
+      
+      // 添加超时处理
+      const timeout = setTimeout(() => {
+        console.log('Stream timeout reached');
+        finished = true;
+        eventSource.close();
+        reject(new Error('流式传输超时'));
+      }, 30000); // 30秒超时
+      
+      // 正常结束时清除超时
+      const originalResolve = resolve;
+      resolve = (value: void | PromiseLike<void>) => {
+        console.log('Stream resolved');
+        finished = true;
+        clearTimeout(timeout);
+        originalResolve(value);
+      };
+      
+      // 错误时也清除超时
+      const originalReject = reject;
+      reject = (reason?: any) => {
+        console.log('Stream rejected:', reason);
+        finished = true;
+        clearTimeout(timeout);
+        originalReject(reason);
+      };
+    });
   },
 
   // 获取演员电影信息
@@ -229,7 +327,7 @@ export const knowledgeFileAPI = {
       throw error;
     }
   },
-  
+
   // 批量删除文件
   batchDeleteKnowledgeFiles: async (ids: number[]) => {
     try {
@@ -242,7 +340,7 @@ export const knowledgeFileAPI = {
       throw error;
     }
   },
-  
+
   // 更新文件描述
   updateFileDescription: async (id: number, description: string) => {
     try {
@@ -259,7 +357,7 @@ export const knowledgeFileAPI = {
   // 向量化文件
   vectorizeFile: async (id: number) => {
     try {
-      const response = await apiClient.post(`/files/${id}/vectorize`, null);
+      const response = await apiClient.post(`/files/${id}/vectorize`);
       return response.data;
     } catch (error) {
       console.error(`向量化文件 ${id} 失败:`, error);
@@ -278,6 +376,3 @@ export const knowledgeFileAPI = {
     }
   }
 };
-
-
-export default apiClient

@@ -5,6 +5,7 @@ export interface Message {
   isUser: boolean
   timestamp: Date
   isError?: boolean
+  isStreaming?: boolean; // 新增字段
 }
 
 // 聊天建议类型

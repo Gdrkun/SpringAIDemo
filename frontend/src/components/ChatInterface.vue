@@ -27,10 +27,10 @@
         </div>
 
         <MessageBubble
-          v-for="message in messages"
-          :key="message.id"
-          :message="message"
-          class="fade-in"
+            v-for="message in messages"
+            :key="message.id"
+            :message="message"
+            class="fade-in"
         />
 
         <div v-if="isLoading" class="typing-indicator">
@@ -55,19 +55,19 @@
       <div class="input-wrapper">
         <div class="input-field">
           <textarea
-            v-model="currentMessage"
-            @keydown="handleKeyDown"
-            placeholder="输入您的问题..."
-            class="chat-input"
-            rows="1"
-            :disabled="isLoading"
+              v-model="currentMessage"
+              @keydown="handleKeyDown"
+              placeholder="输入您的问题..."
+              class="chat-input"
+              rows="1"
+              :disabled="isLoading"
           ></textarea>
         </div>
         <button
-          @click="sendMessage"
-          :disabled="!currentMessage.trim() || isLoading"
-          class="send-button"
-          :class="{ loading: isLoading }"
+            @click="sendMessage"
+            :disabled="!currentMessage.trim() || isLoading"
+            class="send-button"
+            :class="{ loading: isLoading }"
         >
           <svg v-if="!isLoading" viewBox="0 0 24 24" fill="currentColor">
             <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z" />
@@ -82,163 +82,209 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch } from 'vue'
-import MessageBubble from './MessageBubble.vue'
-import { chatAPI } from '@/services/api'
-import type { Message, BackendMessage } from '@/types'
+import { ref, nextTick, watch } from 'vue';
+import MessageBubble from './MessageBubble.vue';
+import { chatAPI } from '@/services/api';
+import type { Message, BackendMessage } from '@/types';
 
-// Props
+// Props 和 Emits 保持不变
 interface Props {
-  conversationId?: string
+  conversationId?: string;
 }
-
-const props = defineProps<Props>()
-
-// Emits
+const props = defineProps<Props>();
 const emit = defineEmits<{
-  conversationCreated: [conversationId: string]
-}>()
+  conversationCreated: [conversationId: string];
+}>();
 
-// 响应式数据
-const messages = ref<Message[]>([])
-const currentMessage = ref<string>('')
-const isLoading = ref<boolean>(false)
-const messageIdCounter = ref<number>(1)
-const messagesContainer = ref<HTMLElement | null>(null)
-const currentConversationId = ref<string | undefined>(props.conversationId)
+// --- 状态定义 ---
+const messages = ref<Message[]>([]);
+const currentMessage = ref<string>('');
+const isLoading = ref<boolean>(false);
+const messageIdCounter = ref<number>(1);
+const messagesContainer = ref<HTMLElement | null>(null);
+const currentConversationId = ref<string | undefined>(props.conversationId);
+const isProcessingNewConversation = ref(false);
 
+const scrollToBottom = (): void => {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+    }
+  });
+};
 
-// 方法
 const sendMessage = async (): Promise<void> => {
-  if (!currentMessage.value.trim() || isLoading.value) return
+  if (!currentMessage.value.trim() || isLoading.value) return;
 
-  const userMessage: Message = {
+  const messageText = currentMessage.value.trim();
+
+  // 1. 显示用户消息
+  messages.value.push({
     id: messageIdCounter.value++,
-    text: currentMessage.value.trim(),
+    text: messageText,
     isUser: true,
-    timestamp: new Date()
-  }
+    timestamp: new Date(),
+    isStreaming: false,
+  });
+  currentMessage.value = '';
 
-  messages.value.push(userMessage)
-  const messageText = currentMessage.value
-  currentMessage.value = ''
-  isLoading.value = true
-
-  await nextTick(() => {
-    scrollToBottom()
-  })
+  // 2. 显示“正在思考”提示
+  isLoading.value = true;
+  scrollToBottom();
 
   try {
-    let response: string
-
-    if (currentConversationId.value) {
-      // 使用现有对话ID发送消息
-      response = await chatAPI.sendMessageWithConversation(currentConversationId.value, messageText)
-    } else {
-      // 创建新对话
-      const newConversationId = generateConversationId()
-      currentConversationId.value = newConversationId
-      response = await chatAPI.sendMessageWithConversation(newConversationId, messageText)
-      emit('conversationCreated', newConversationId)
+    // 3. 处理新对话ID
+    if (!currentConversationId.value) {
+      isProcessingNewConversation.value = true;
+      const newId = generateConversationId();
+      currentConversationId.value = newId;
+      emit('conversationCreated', newId);
     }
 
-    const aiMessage: Message = {
-      id: messageIdCounter.value++,
-      text: response,
-      isUser: false,
-      timestamp: new Date()
-    }
+    // 4. 准备一个变量来持有AI消息对象
+    let aiMessage: Message | null = null;
 
-    messages.value.push(aiMessage)
+    // 5. 调用流式API
+    await chatAPI.sendMessageWithConversationStream(
+        currentConversationId.value!,
+        messageText,
+        (chunk) => {
+          if (!aiMessage) {
+            isLoading.value = false;
+            aiMessage = {
+              id: messageIdCounter.value++,
+              text: '',
+              isUser: false,
+              timestamp: new Date(),
+              isStreaming: true,
+            };
+            messages.value.push(aiMessage);
+          }
+          const updatedAiMessage = {
+            ...aiMessage,
+            text: aiMessage.text + chunk,
+            isStreaming: true,
+          };
+          const index = messages.value.findIndex(m => m.id === aiMessage.id);
+          if (index !== -1) {
+            messages.value[index] = updatedAiMessage;
+          }
+          aiMessage = updatedAiMessage;
+
+          console.log('Received chunk:', chunk);
+          console.log('Current AI message text:', aiMessage.text);
+          scrollToBottom();
+        }
+    );
+
+    // 6. 流结束后，清理多余的换行符并标记为非流式
+    if (aiMessage) {
+      const finalText = aiMessage.text.replace(/\n+/g, '\n').trim(); // 合并多余换行符
+      const index = messages.value.findIndex(m => m.id === aiMessage.id);
+      if (index !== -1) {
+        messages.value[index] = {
+          ...aiMessage,
+          text: finalText,
+          isStreaming: false,
+        };
+      }
+    }
   } catch (error) {
-    console.error('发送消息失败:', error)
-
-    const errorMessage: Message = {
+    console.error('发送消息失败:', error);
+    // 移除正在流式传输的消息（如果存在）
+    if (messages.value.length > 0 && messages.value[messages.value.length - 1].isStreaming) {
+      messages.value.pop();
+    }
+    messages.value.push({
       id: messageIdCounter.value++,
       text: '抱歉，发生了错误，请稍后重试。',
       isUser: false,
       timestamp: new Date(),
-      isError: true
-    }
-
-    messages.value.push(errorMessage)
+      isError: true,
+      isStreaming: false,
+    });
   } finally {
-    isLoading.value = false
-    await nextTick(() => {
-      scrollToBottom()
-    })
+    isLoading.value = false;
+    isProcessingNewConversation.value = false;
   }
-}
+};
 
 const handleKeyDown = (event: KeyboardEvent): void => {
   if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
-    sendMessage()
+    event.preventDefault();
+    sendMessage();
   }
-}
-
-const scrollToBottom = (): void => {
-  const container = messagesContainer.value
-  if (container) {
-    nextTick(() => {
-      container.scrollTop = container.scrollHeight
-    })
-  }
-}
+};
 
 const sendSuggestion = (suggestion: string): void => {
-  currentMessage.value = suggestion
-  sendMessage()
-}
+  currentMessage.value = suggestion;
+  sendMessage();
+};
 
-// 生成对话ID
-const generateConversationId = (): string => {
-  return `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-}
+const generateConversationId = (): string => `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-// 加载历史消息
 const loadHistoryMessages = async (conversationId: string): Promise<void> => {
   try {
-    const backendMessages = await chatAPI.getConversationMessages(conversationId)
+    const backendMessages = await chatAPI.getConversationMessages(conversationId);
 
-    // 转换后端消息格式为前端格式
-    const convertedMessages: Message[] = backendMessages.map((msg: BackendMessage) => ({
-      id: messageIdCounter.value++,
+    const cleanedMessages = backendMessages.map((msg: BackendMessage) => {
+      let cleanedText = msg.text;
+      if (msg.messageType.toLowerCase() === 'assistant' && cleanedText.includes('data:')) {
+        cleanedText = cleanedText
+            .split('\n')
+            .map(line => {
+                if (line.startsWith('data:')) {
+                    return line.substring(5).trim();
+                }
+                return line.trim();
+            })
+            .join('\n');
+      }
+      return {
+        ...msg,
+        text: cleanedText,
+      };
+    });
+
+    messages.value = cleanedMessages.map((msg: BackendMessage, index: number) => ({
+      id: index,
       text: msg.text,
       isUser: msg.messageType.toLowerCase() === 'user',
-      timestamp: new Date(), // 这里可以从metadata中获取真实时间戳
-      isError: false
-    }))
+      timestamp: new Date(),
+      isError: false,
+      isStreaming: false, // 历史消息无需流式处理
+    }));
 
-    messages.value = convertedMessages
-    messageIdCounter.value = convertedMessages.length + 1
-
-    await nextTick(() => {
-      scrollToBottom()
-    })
+    messageIdCounter.value = messages.value.length;
+    scrollToBottom();
   } catch (error) {
-    console.error('加载历史消息失败:', error)
-    messages.value = []
+    console.error('加载历史消息失败:', error);
+    messages.value = [];
   }
-}
+};
 
-// 清空当前对话
 const clearCurrentConversation = (): void => {
-  messages.value = []
-  messageIdCounter.value = 1
-  currentConversationId.value = undefined
-}
+  messages.value = [];
+  messageIdCounter.value = 1;
+  currentConversationId.value = undefined;
+};
 
-// 监听conversationId变化
-watch(() => props.conversationId, async (newConversationId) => {
-  currentConversationId.value = newConversationId
-
-  if (newConversationId) {
-    await loadHistoryMessages(newConversationId)
-  } else {
-    clearCurrentConversation()
-  }
-}, { immediate: true })
+// --- 监听器 ---
+watch(
+    () => props.conversationId,
+    async (newConversationId) => {
+      if (isProcessingNewConversation.value) {
+        return;
+      }
+      currentConversationId.value = newConversationId;
+      if (newConversationId) {
+        await loadHistoryMessages(newConversationId);
+      } else {
+        clearCurrentConversation();
+      }
+    },
+    { immediate: true }
+);
 </script>
 
 <style scoped>

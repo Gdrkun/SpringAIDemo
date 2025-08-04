@@ -35,81 +35,100 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { marked } from 'marked'
-import hljs from 'highlight.js'
-import type { Message } from '@/types'
+import { computed } from 'vue';
+import { marked } from 'marked';
+import hljs from 'highlight.js';
+import type { Message } from '@/types';
 
-// Props
 interface Props {
-  message: Message
+  message: Message;
 }
+const props = defineProps<Props>();
 
-const props = defineProps<Props>()
-
-// 配置marked
-marked.setOptions({
-  breaks: true, // 支持换行
-  gfm: true, // 支持GitHub风格的Markdown
-})
-
-// 自定义渲染器以支持代码高亮
-const renderer = new marked.Renderer()
-renderer.code = function({ text, lang }: { text: string; lang?: string }) {
-  if (lang && hljs.getLanguage(lang)) {
-    try {
-      const highlighted = hljs.highlight(text, { language: lang }).value
-      return `<pre><code class="hljs language-${lang}">${highlighted}</code></pre>`
-    } catch (err) {
-      console.warn('代码高亮失败:', err)
-    }
-  }
-  const highlighted = hljs.highlightAuto(text).value
-  return `<pre><code class="hljs">${highlighted}</code></pre>`
-}
-
-marked.use({ renderer })
-
-// 计算属性
 const formattedText = computed((): string => {
-  if (props.message.isUser) {
-    // 用户消息保持简单格式化
-    return props.message.text.replace(/\n/g, '<br>')
-  } else {
-    // AI消息使用Markdown解析
-    try {
-      // 使用同步版本的marked
-      return marked(props.message.text, { async: false }) as string
-    } catch (error) {
-      console.error('Markdown解析失败:', error)
-      // 如果Markdown解析失败，回退到简单格式化
-      return props.message.text.replace(/\n/g, '<br>')
-    }
+  if (!props.message || !props.message.text) {
+    return '';
   }
-})
 
-// 方法
+  // 用户消息：简单替换换行符
+  if (props.message.isUser) {
+    return props.message.text.replace(/\n/g, '<br>');
+  }
+
+  // AI消息（包括流式消息）：执行完整的 Markdown 解析
+  try {
+    const renderer = new marked.Renderer();
+    renderer.code = (code, lang) => {
+      const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
+      try {
+        const highlighted = hljs.highlight(code, { language, ignoreIllegals: true }).value;
+        return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+      } catch (error) {
+        console.warn(`代码高亮失败: ${error}`);
+        const highlighted = hljs.highlightAuto(code).value;
+        return `<pre><code class="hljs">${highlighted}</code></pre>`;
+      }
+    };
+
+    return marked(props.message.text, {
+      gfm: true,
+      breaks: true,
+      renderer,
+      async: false,
+    }) as string;
+  } catch (error) {
+    console.error('Markdown解析失败:', error);
+    return props.message.text.replace(/\n/g, '<br>');
+  }
+
+  // 非流式的AI消息：执行完整的 Markdown 解析
+  try {
+    const renderer = new marked.Renderer();
+    renderer.code = (code, lang) => {
+      const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
+      try {
+        const highlighted = hljs.highlight(code, { language, ignoreIllegals: true }).value;
+        return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+      } catch (error) {
+        console.warn(`代码高亮失败: ${error}`);
+        const highlighted = hljs.highlightAuto(code).value;
+        return `<pre><code class="hljs">${highlighted}</code></pre>`;
+      }
+    };
+
+    return marked(props.message.text, {
+      gfm: true,
+      breaks: true,
+      renderer,
+      async: false,
+    }) as string;
+  } catch (error) {
+    console.error('Markdown解析失败:', error);
+    return props.message.text.replace(/\n/g, '<br>');
+  }
+});
+
 const formatTime = (timestamp: Date): string => {
-  const now = new Date()
-  const messageTime = new Date(timestamp)
-  const diffInMinutes = Math.floor((now.getTime() - messageTime.getTime()) / (1000 * 60))
+  const now = new Date();
+  const messageTime = new Date(timestamp);
+  const diffInMinutes = Math.floor((now.getTime() - messageTime.getTime()) / (1000 * 60));
 
   if (diffInMinutes < 1) {
-    return '刚刚'
+    return '刚刚';
   } else if (diffInMinutes < 60) {
-    return `${diffInMinutes}分钟前`
+    return `${diffInMinutes}分钟前`;
   } else if (diffInMinutes < 1440) {
-    const hours = Math.floor(diffInMinutes / 60)
-    return `${hours}小时前`
+    const hours = Math.floor(diffInMinutes / 60);
+    return `${hours}小时前`;
   } else {
     return messageTime.toLocaleDateString('zh-CN', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
-    })
+      minute: '2-digit',
+    });
   }
-}
+};
 </script>
 
 <style scoped>
@@ -289,10 +308,10 @@ const formatTime = (timestamp: Date): string => {
 .message-text {
   line-height: 1.65;
   word-wrap: break-word;
-  white-space: pre-wrap;
   font-size: 0.95rem;
   margin-bottom: 0.5rem;
   transition: color 0.3s ease;
+  white-space: pre-wrap; /* 确保换行符显示 */
 }
 
 .user-bubble .message-text {
@@ -428,7 +447,8 @@ const formatTime = (timestamp: Date): string => {
 }
 
 .message-text :deep(pre) {
-  margin: 1rem 0;
+  margin-top: 0.5rem; /* Reduced top margin */
+  margin-bottom: 0.5rem; /* Adjusted bottom margin for consistency */
   padding: 1rem;
   background: rgba(45, 55, 72, 0.95);
   border: 1px solid rgba(102, 126, 234, 0.2);
