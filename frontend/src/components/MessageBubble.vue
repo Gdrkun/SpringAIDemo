@@ -1,6 +1,6 @@
 <template>
   <div class="message-wrapper" :class="{ 'user-message': message.isUser, 'ai-message': !message.isUser }">
-    <!-- AI头像 -->
+    <!-- AI Avatar -->
     <div v-if="!message.isUser" class="message-avatar ai-avatar">
       <div class="avatar-inner">
         <svg viewBox="0 0 24 24" fill="currentColor" class="avatar-icon">
@@ -9,13 +9,14 @@
       </div>
     </div>
 
-    <!-- 消息内容 -->
+    <!-- Message Content -->
     <div class="message-content">
       <div class="message-bubble" :class="{
         'user-bubble': message.isUser,
         'ai-bubble': !message.isUser,
         'error-bubble': message.isError
       }">
+        <!-- The v-html directive is used to render the Markdown-parsed content -->
         <div class="message-text" v-html="formattedText"></div>
         <div class="message-meta">
           <span class="message-time">{{ formatTime(message.timestamp) }}</span>
@@ -23,7 +24,7 @@
       </div>
     </div>
 
-    <!-- 用户头像 -->
+    <!-- User Avatar -->
     <div v-if="message.isUser" class="message-avatar user-avatar">
       <div class="avatar-inner">
         <svg viewBox="0 0 24 24" fill="currentColor" class="avatar-icon">
@@ -36,103 +37,172 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { marked } from 'marked';
-import hljs from 'highlight.js';
+import MarkdownIt from 'markdown-it';
 import type { Message } from '@/types';
+import hljs from 'highlight.js/lib/core';
+import javascript from 'highlight.js/lib/languages/javascript';
+import xml from 'highlight.js/lib/languages/xml';
+import css from 'highlight.js/lib/languages/css';
+import json from 'highlight.js/lib/languages/json';
+import bash from 'highlight.js/lib/languages/bash';
+import python from 'highlight.js/lib/languages/python';
+import java from 'highlight.js/lib/languages/java';
+import sql from 'highlight.js/lib/languages/sql';
+import plaintext from 'highlight.js/lib/languages/plaintext';
+
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('jsx', javascript);
+hljs.registerLanguage('ts', javascript);
+hljs.registerLanguage('typescript', javascript);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('html', xml);
+hljs.registerLanguage('css', css);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('sh', bash);
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('py', python);
+hljs.registerLanguage('java', java);
+hljs.registerLanguage('sql', sql);
+hljs.registerLanguage('plaintext', plaintext);
 
 interface Props {
   message: Message;
 }
 const props = defineProps<Props>();
 
+// 创建 markdown-it 实例
+const createMarkdownInstance = () => {
+  const md = new MarkdownIt({
+    html: false,
+    xhtmlOut: false,
+    breaks: false,
+    langPrefix: 'language-',
+    linkify: true,
+    typographer: true,
+    highlight: (str: string, lang: string) => {
+      if (lang && hljs.getLanguage(lang)) {
+        try {
+          return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
+        } catch (__) {}
+      }
+      return ''; // use external default escaping
+    }
+  });
+
+  // Custom fence renderer
+  md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    let info = token.info ? md.utils.unescapeAll(token.info).trim() : '';
+    let content = token.content;
+
+    // Check for [language] syntax on the first line of the content,
+    // especially when the fence is generic (e.g., ```plaintext or ```)
+    const langMatch = content.match(/^\s*([a-zA-Z0-9_.-]+)\s*\n/);
+    if ((!info || info === 'plaintext') && langMatch) {
+      info = langMatch[1]; // Use language from content
+      content = content.substring(langMatch[0].length); // Strip the language line
+    }
+
+    const langName = (info.split(/\s+/g)[0] || 'plaintext').toLowerCase();
+    const validLanguage = hljs.getLanguage(langName) ? langName : 'plaintext';
+
+    // Use the highlight function from options
+    const highlighted = options.highlight(content, langName, '') || md.utils.escapeHtml(content);
+
+    return `<div class="code-block-wrapper">
+      <div class="code-block-header">
+        <span class="code-language">${validLanguage}</span>
+      </div>
+      <pre class="code-block"><code class="hljs language-${validLanguage}">${highlighted}</code></pre>
+    </div>`;
+  };
+
+  return md;
+};
+
+// 创建 markdown 实例
+const markdownInstance = createMarkdownInstance();
+
+/**
+ * 修复流式传输中可能出现的 Markdown 问题
+ */
+const fixStreamingMarkdown = (markdown: string): string => {
+    // This function robustly prepares streaming markdown for rendering.
+    // It ensures that every code fence (` ``` `) is on its own line, which is
+    // essential for the markdown parser to correctly identify separate code blocks.
+
+    // Step 1: Ensure a newline *before* any code fence that isn't already preceded by one.
+    // The negative lookbehind `(?<!\n)` is key to preventing extra lines.
+    let fixed = markdown.replace(/(?<!\n)```/g, '\n```');
+
+    // Step 2: Ensure a newline *after* any code fence that isn't followed by one.
+    // The negative lookahead `(?!\n)` prevents adding extra lines if one already exists.
+    fixed = fixed.replace(/```(?!\n)/g, '```\n');
+
+    // Step 3: If a code block is still open (i.e., odd number of fences),
+    // we add a temporary closing fence for the renderer. This fence
+    // MUST also start on a new line to be parsed correctly.
+    const fenceCount = (fixed.match(/```/g) || []).length;
+    if (fenceCount % 2 === 1) {
+        // Ensure there is a newline before adding the closing fence
+        if (!fixed.endsWith('\n')) {
+            fixed += '\n';
+        }
+        fixed += '```';
+    }
+
+    return fixed;
+};
+
 const formattedText = computed((): string => {
-  if (!props.message || !props.message.text) {
+  if (!props.message?.text) {
     return '';
   }
 
-  // 用户消息：简单替换换行符
+  // 用户消息：简单的 HTML 转义和换行处理
   if (props.message.isUser) {
-    return props.message.text.replace(/\n/g, '<br>');
+    const escapedText = props.message.text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    return escapedText.replace(/\n/g, '<br>');
   }
 
-  // AI消息（包括流式消息）：执行完整的 Markdown 解析
+  // AI 消息：Markdown 解析
   try {
-    const renderer = new marked.Renderer();
-    renderer.code = (code, lang) => {
-      const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
-      try {
-        const highlighted = hljs.highlight(code, { language, ignoreIllegals: true }).value;
-        return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
-      } catch (error) {
-        console.warn(`代码高亮失败: ${error}`);
-        const highlighted = hljs.highlightAuto(code).value;
-        return `<pre><code class="hljs">${highlighted}</code></pre>`;
-      }
-    };
-
-    return marked(props.message.text, {
-      gfm: true,
-      breaks: true,
-      renderer,
-      async: false,
-    }) as string;
+    const textToParse = fixStreamingMarkdown(props.message.text);
+    const result = markdownInstance.render(textToParse);
+    return result;
   } catch (error) {
-    console.error('Markdown解析失败:', error);
-    return props.message.text.replace(/\n/g, '<br>');
-  }
+    console.error('Markdown parsing failed:', error);
+    console.error('Problematic text:', props.message.text.substring(0, 200) + '...');
 
-  // 非流式的AI消息：执行完整的 Markdown 解析
-  try {
-    const renderer = new marked.Renderer();
-    renderer.code = (code, lang) => {
-      const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
-      try {
-        const highlighted = hljs.highlight(code, { language, ignoreIllegals: true }).value;
-        return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
-      } catch (error) {
-        console.warn(`代码高亮失败: ${error}`);
-        const highlighted = hljs.highlightAuto(code).value;
-        return `<pre><code class="hljs">${highlighted}</code></pre>`;
-      }
-    };
-
-    return marked(props.message.text, {
-      gfm: true,
-      breaks: true,
-      renderer,
-      async: false,
-    }) as string;
-  } catch (error) {
-    console.error('Markdown解析失败:', error);
-    return props.message.text.replace(/\n/g, '<br>');
+    // 失败时返回简单的 HTML 转义版本
+    const escapedText = props.message.text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, '<br>');
+    return escapedText;
   }
 });
 
 const formatTime = (timestamp: Date): string => {
-  const now = new Date();
+  if (!timestamp) return '';
   const messageTime = new Date(timestamp);
-  const diffInMinutes = Math.floor((now.getTime() - messageTime.getTime()) / (1000 * 60));
-
-  if (diffInMinutes < 1) {
-    return '刚刚';
-  } else if (diffInMinutes < 60) {
-    return `${diffInMinutes}分钟前`;
-  } else if (diffInMinutes < 1440) {
-    const hours = Math.floor(diffInMinutes / 60);
-    return `${hours}小时前`;
-  } else {
-    return messageTime.toLocaleDateString('zh-CN', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
+  return messageTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 };
+
 </script>
 
-<style scoped>
-/* 消息容器 */
+<style>
+/* Import a highlight.js theme for code blocks */
+@import 'highlight.js/styles/atom-one-dark.css';
+
+/* 基础消息样式 */
 .message-wrapper {
   display: flex;
   gap: 0.875rem;
@@ -162,7 +232,6 @@ const formatTime = (timestamp: Date): string => {
   }
 }
 
-/* 头像样式 */
 .message-avatar {
   width: 42px;
   height: 42px;
@@ -200,41 +269,14 @@ const formatTime = (timestamp: Date): string => {
   z-index: 2;
 }
 
-/* AI头像 */
 .ai-avatar .avatar-inner {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  position: relative;
 }
 
-.ai-avatar .avatar-inner::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(45deg, rgba(255,255,255,0.2) 0%, transparent 50%, rgba(255,255,255,0.1) 100%);
-  border-radius: 50%;
-}
-
-/* 用户头像 */
 .user-avatar .avatar-inner {
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  position: relative;
 }
 
-.user-avatar .avatar-inner::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(45deg, rgba(255,255,255,0.2) 0%, transparent 50%, rgba(255,255,255,0.1) 100%);
-  border-radius: 50%;
-}
-
-/* 消息内容 */
 .message-content {
   flex: 1;
   min-width: 0;
@@ -253,12 +295,6 @@ const formatTime = (timestamp: Date): string => {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.message-bubble:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
-}
-
-/* AI消息气泡 */
 .ai-bubble {
   background: rgba(255, 255, 255, 0.95);
   border-left: 3px solid #667eea;
@@ -266,68 +302,223 @@ const formatTime = (timestamp: Date): string => {
   border-bottom-left-radius: 6px;
 }
 
-.ai-bubble::before {
-  content: '';
-  position: absolute;
-  left: -8px;
-  bottom: 12px;
-  width: 0;
-  height: 0;
-  border-right: 8px solid rgba(255, 255, 255, 0.95);
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-}
-
-/* 用户消息气泡 */
 .user-bubble {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border-bottom-right-radius: 6px;
 }
 
-.user-bubble::before {
-  content: '';
-  position: absolute;
-  right: -8px;
-  bottom: 12px;
-  width: 0;
-  height: 0;
-  border-left: 8px solid #764ba2;
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-}
-
-/* 错误消息气泡 */
 .error-bubble {
   background: rgba(254, 242, 242, 0.95);
   border-left: 3px solid #ef4444;
   color: #dc2626;
 }
 
-/* 消息文本 */
 .message-text {
   line-height: 1.65;
   word-wrap: break-word;
   font-size: 0.95rem;
   margin-bottom: 0.5rem;
-  transition: color 0.3s ease;
-  white-space: pre-wrap; /* 确保换行符显示 */
+  white-space: pre-wrap;
 }
 
-.user-bubble .message-text {
-  color: white;
+.message-text :deep(p:first-child) {
+  margin-top: 0;
+}
+.message-text :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* 代码块容器样式 - 关键修复 */
+.message-text :deep(.code-block-wrapper) {
+  margin: 1.2rem 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* 代码块头部 */
+.message-text :deep(.code-block-header) {
+  background: #2d2d2d;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #444;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.message-text :deep(.code-language) {
+  color: #a8a8a8;
+  font-size: 0.75rem;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.ai-bubble .message-text {
-  color: #2d3748;
+/* 代码块主体 */
+.message-text :deep(.code-block) {
+  margin: 0 !important;
+  padding: 1.2rem !important;
+  background: #1e1e1e !important;
+  border-radius: 0 !important;
+  overflow-x: auto;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: #d4d4d4 !important;
 }
 
-.error-bubble .message-text {
-  color: #dc2626;
+.message-text :deep(.code-block code.hljs) {
+  background: transparent !important;
+  padding: 0 !important;
+  color: #d4d4d4 !important;
+  display: block;
+  font-family: inherit;
 }
 
-/* 消息元信息 */
+/* 滚动条样式 */
+.message-text :deep(.code-block)::-webkit-scrollbar {
+  height: 6px;
+}
+
+.message-text :deep(.code-block)::-webkit-scrollbar-track {
+  background: #2d2d2d;
+}
+
+.message-text :deep(.code-block)::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+
+.message-text :deep(.code-block)::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}
+
+/* 内联代码样式 */
+.message-text :deep(p code:not(.hljs)),
+.message-text :deep(li code:not(.hljs)) {
+  background: rgba(0, 0, 0, 0.08);
+  color: #c7254e;
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', monospace;
+  font-size: 0.88em;
+  font-weight: 500;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* 用户消息中的内联代码 */
+.user-bubble .message-text :deep(p code:not(.hljs)),
+.user-bubble .message-text :deep(li code:not(.hljs)) {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* 表格样式 */
+.message-text :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.message-text :deep(table th),
+.message-text :deep(table td) {
+  border: 1px solid #e2e8f0;
+  padding: 0.75rem;
+  text-align: left;
+}
+
+.message-text :deep(table th) {
+  background-color: #f8fafc;
+  font-weight: 600;
+  color: #374151;
+}
+
+.message-text :deep(table tr:nth-child(even)) {
+  background-color: #f9fafb;
+}
+
+/* 引用块样式 */
+.message-text :deep(blockquote) {
+  border-left: 4px solid #667eea;
+  margin: 1rem 0;
+  padding: 1rem 1.5rem;
+  background: rgba(102, 126, 234, 0.08);
+  border-radius: 0 8px 8px 0;
+  font-style: italic;
+  position: relative;
+}
+
+.message-text :deep(blockquote::before) {
+  content: '"';
+  font-size: 3rem;
+  color: #667eea;
+  position: absolute;
+  top: -0.5rem;
+  left: 0.5rem;
+  opacity: 0.3;
+}
+
+/* 列表样式 */
+.message-text :deep(ul),
+.message-text :deep(ol) {
+  padding-left: 1.5rem;
+  margin: 0.75rem 0;
+}
+
+.message-text :deep(li) {
+  margin: 0.4rem 0;
+  line-height: 1.6;
+}
+
+.message-text :deep(ul li) {
+  list-style-type: disc;
+}
+
+.message-text :deep(ol li) {
+  list-style-type: decimal;
+}
+
+/* 链接样式 */
+.message-text :deep(a) {
+  color: #667eea;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.message-text :deep(a:hover) {
+  color: #5a67d8;
+  border-bottom-color: #5a67d8;
+}
+
+.user-bubble .message-text :deep(a) {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.user-bubble .message-text :deep(a:hover) {
+  color: white;
+  border-bottom-color: white;
+}
+
+/* 强调文本样式 */
+.message-text :deep(strong) {
+  font-weight: 600;
+  color: inherit;
+}
+
+.message-text :deep(em) {
+  font-style: italic;
+  color: inherit;
+}
+
+/* 时间戳样式 */
 .message-meta {
   display: flex;
   justify-content: flex-end;
@@ -335,15 +526,10 @@ const formatTime = (timestamp: Date): string => {
   margin-top: 0.25rem;
 }
 
-.user-message .message-meta {
-  justify-content: flex-start;
-}
-
 .message-time {
   font-size: 0.75rem;
   opacity: 0.7;
   font-weight: 500;
-  transition: opacity 0.3s ease;
 }
 
 .user-bubble .message-time {
@@ -354,311 +540,20 @@ const formatTime = (timestamp: Date): string => {
   color: #6b7280;
 }
 
-.message-bubble:hover .message-time {
-  opacity: 1;
-}
 
-/* Markdown样式 */
-.message-text :deep(h1),
-.message-text :deep(h2),
-.message-text :deep(h3),
-.message-text :deep(h4),
-.message-text :deep(h5),
-.message-text :deep(h6) {
-  margin: 1rem 0 0.5rem 0;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.ai-bubble .message-text :deep(h1),
-.ai-bubble .message-text :deep(h2),
-.ai-bubble .message-text :deep(h3),
-.ai-bubble .message-text :deep(h4),
-.ai-bubble .message-text :deep(h5),
-.ai-bubble .message-text :deep(h6) {
-  color: #1a202c;
-}
-
-.user-bubble .message-text :deep(h1),
-.user-bubble .message-text :deep(h2),
-.user-bubble .message-text :deep(h3),
-.user-bubble .message-text :deep(h4),
-.user-bubble .message-text :deep(h5),
-.user-bubble .message-text :deep(h6) {
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.message-text :deep(h1) { font-size: 1.5rem; }
-.message-text :deep(h2) { font-size: 1.3rem; }
-.message-text :deep(h3) { font-size: 1.1rem; }
-.message-text :deep(h4) { font-size: 1rem; }
-.message-text :deep(h5) { font-size: 0.9rem; }
-.message-text :deep(h6) { font-size: 0.85rem; }
-
-.message-text :deep(p) {
-  margin: 0.5rem 0;
-  line-height: 1.65;
-}
-
-.message-text :deep(ul),
-.message-text :deep(ol) {
-  margin: 0.5rem 0;
-  padding-left: 1.5rem;
-}
-
-.message-text :deep(li) {
-  margin: 0.25rem 0;
-  line-height: 1.6;
-}
-
-.message-text :deep(blockquote) {
-  margin: 1rem 0;
-  padding: 0.75rem 1rem;
-  border-left: 4px solid #667eea;
-  background: rgba(102, 126, 234, 0.1);
-  border-radius: 0 8px 8px 0;
-  font-style: italic;
-}
-
-.ai-bubble .message-text :deep(blockquote) {
-  color: #4a5568;
-}
-
-.user-bubble .message-text :deep(blockquote) {
-  background: rgba(255, 255, 255, 0.15);
-  border-left-color: rgba(255, 255, 255, 0.6);
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.message-text :deep(code) {
-  background: rgba(102, 126, 234, 0.1);
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', monospace;
-  font-size: 0.85rem;
-  color: #667eea;
-  border: 1px solid rgba(102, 126, 234, 0.2);
-}
-
-.user-bubble .message-text :deep(code) {
-  background: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.95);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.message-text :deep(pre) {
-  margin-top: 0.5rem; /* Reduced top margin */
-  margin-bottom: 0.5rem; /* Adjusted bottom margin for consistency */
-  padding: 1rem;
-  background: rgba(45, 55, 72, 0.95);
-  border: 1px solid rgba(102, 126, 234, 0.2);
-  border-radius: 8px;
-  overflow-x: auto;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', monospace;
-  font-size: 0.85rem;
-  line-height: 1.5;
-}
-
-.message-text :deep(pre code) {
-  background: none;
-  padding: 0;
-  border: none;
-  color: #e2e8f0;
-}
-
-.message-text :deep(table) {
-  width: 100%;
-  margin: 1rem 0;
-  border-collapse: collapse;
-  border: 1px solid rgba(102, 126, 234, 0.2);
-  border-radius: 8px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.5);
-}
-
-.user-bubble .message-text :deep(table) {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.message-text :deep(th),
-.message-text :deep(td) {
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
-}
-
-.user-bubble .message-text :deep(th),
-.user-bubble .message-text :deep(td) {
-  border-bottom-color: rgba(255, 255, 255, 0.2);
-}
-
-.message-text :deep(th) {
-  background: rgba(102, 126, 234, 0.1);
-  font-weight: 600;
-}
-
-.ai-bubble .message-text :deep(th) {
-  color: #2d3748;
-}
-
-.user-bubble .message-text :deep(th) {
-  background: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.message-text :deep(tr:last-child td) {
-  border-bottom: none;
-}
-
-.message-text :deep(a) {
-  color: #667eea;
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-  transition: all 0.2s ease;
-  font-weight: 500;
-}
-
-.message-text :deep(a:hover) {
-  border-bottom-color: #667eea;
-  color: #5a67d8;
-}
-
-.user-bubble .message-text :deep(a) {
-  color: rgba(255, 255, 255, 0.9);
-  border-bottom-color: transparent;
-}
-
-.user-bubble .message-text :deep(a:hover) {
-  color: white;
-  border-bottom-color: rgba(255, 255, 255, 0.7);
-}
-
-.message-text :deep(strong) {
-  font-weight: 600;
-}
-
-.ai-bubble .message-text :deep(strong) {
-  color: #2d3748;
-}
-
-.user-bubble .message-text :deep(strong) {
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.message-text :deep(em) {
-  font-style: italic;
-}
-
-.ai-bubble .message-text :deep(em) {
-  color: #4a5568;
-}
-
-.user-bubble .message-text :deep(em) {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.message-text :deep(hr) {
-  margin: 1.5rem 0;
-  border: none;
-  height: 1px;
-  background: rgba(102, 126, 234, 0.2);
-}
-
-.user-bubble .message-text :deep(hr) {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-/* 响应式设计 */
+/* 响应式优化 */
 @media (max-width: 768px) {
   .message-wrapper {
-    max-width: 90%;
-    gap: 0.75rem;
-    margin-bottom: 1.25rem;
-  }
-
-  .message-avatar {
-    width: 38px;
-    height: 38px;
-  }
-
-  .avatar-icon {
-    width: 20px;
-    height: 20px;
-  }
-
-  .message-bubble {
-    padding: 0.875rem 1rem 0.625rem;
-    border-radius: 16px;
-  }
-
-  .message-text {
-    font-size: 0.9rem;
-    line-height: 1.6;
-  }
-
-  .message-time {
-    font-size: 0.7rem;
-  }
-
-  .message-bubble::before {
-    border-width: 6px;
-  }
-
-  .ai-bubble::before {
-    left: -6px;
-    border-right-width: 6px;
-  }
-
-  .user-bubble::before {
-    right: -6px;
-    border-left-width: 6px;
-  }
-}
-
-@media (max-width: 480px) {
-  .message-wrapper {
     max-width: 95%;
-    gap: 0.625rem;
-    margin-bottom: 1rem;
   }
 
-  .message-avatar {
-    width: 34px;
-    height: 34px;
+  .message-text :deep(.code-block) {
+    font-size: 0.8rem;
+    padding: 1rem !important;
   }
 
-  .avatar-icon {
-    width: 18px;
-    height: 18px;
-  }
-
-  .message-bubble {
-    padding: 0.75rem 0.875rem 0.5rem;
-    border-radius: 14px;
-  }
-
-  .message-text {
-    font-size: 0.875rem;
-    line-height: 1.55;
-  }
-
-  .message-time {
-    font-size: 0.65rem;
-  }
-
-  .message-bubble::before {
-    border-width: 5px;
-  }
-
-  .ai-bubble::before {
-    left: -5px;
-    border-right-width: 5px;
-  }
-
-  .user-bubble::before {
-    right: -5px;
-    border-left-width: 5px;
+  .message-text :deep(.code-block-header) {
+    padding: 0.4rem 0.8rem;
   }
 }
 </style>

@@ -2,6 +2,7 @@ package com.drk.SpringAIDemo.controller;
 
 import com.drk.SpringAIDemo.pojo.ActorsFilms;
 
+import com.drk.SpringAIDemo.pojo.ConversationPojo;
 import com.drk.SpringAIDemo.tools.DateTimeTools;
 
 import org.springframework.ai.chat.client.ChatClient;
@@ -23,15 +24,20 @@ import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.ResponseEntity;
+import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.bind.annotation.*;
 import com.drk.SpringAIDemo.component.InMySqlChatMemory;
 import org.springframework.http.MediaType;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @Author drk
@@ -45,7 +51,7 @@ import java.util.Map;
 public class ChatController {
 
     private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
-
+    private final Map<String, Sinks.Many<String>> streamCache = new ConcurrentHashMap<>();
 
     private final ChatClient chatClient;
     private final ChatModel chatModel;
@@ -105,17 +111,17 @@ public class ChatController {
     }
 
 
-    @GetMapping(value = "/chatMemory", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PostMapping(value = "/chatMemory", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @CrossOrigin
-    public Flux<String> chat(@RequestParam String conversationId, @RequestParam String inputMsg) {
+    public Flux<String> chat(@RequestBody ConversationPojo conversation) {
 
         return chatClient
                 .prompt()
-                .user(inputMsg)
+                .user(u->u.text(conversation.getInputMsg()))
                 .advisors(
                         new SimpleLoggerAdvisor(),
                         // MessageChatMemoryAdvisor 先执行，order值较小，优先级较高，存储原始用户消息
-                        MessageChatMemoryAdvisor.builder(inMySqlChatMemory).order(1).conversationId(conversationId).scheduler(Schedulers.boundedElastic()).build(),
+                        MessageChatMemoryAdvisor.builder(inMySqlChatMemory).order(1).conversationId(conversation.getConversationId()).scheduler(Schedulers.boundedElastic()).build(),
                         //qaAdvisor 后执行，order值较大，优先级较低，添加上下文信息但不影响存
                         qaAdvisor
                 )
@@ -124,7 +130,7 @@ public class ChatController {
                 .content()
                 .concatWith(Flux.just("[DONE]")) // 添加完成标记
                 .onErrorResume(e -> {
-                    logger.error("Error during chat processing for conversationId: {}", conversationId, e);
+                    logger.error("Error during chat processing for conversationId: {}", conversation.getConversationId(), e);
                     // 将错误信息包装成 SSE 事件发送到前端
                     return Flux.just("data: {\"error\": \"An error occurred: " + e.getMessage() + "\"}\n\n");
                 });

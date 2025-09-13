@@ -134,115 +134,188 @@ export const chatAPI = {
     }
   },
 
-  // 流式消息方法 - 使用EventSource处理SSE
+
   sendMessageWithConversationStream: async (
-    conversationId: string,
-    message: string,
-    onDelta: (chunk: string) => void
+      conversationId: string,
+      message: string,
+      onDelta: (chunk: string) => void
   ): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      // 构造SSE URL - 确保使用正确的路径
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
-      const url = `${baseUrl}/chat/chatMemory?conversationId=${encodeURIComponent(conversationId)}&inputMsg=${encodeURIComponent(message)}`;
-      
-      console.log('Connecting to SSE stream:', url);
-      
-      // 创建EventSource连接
-      const eventSource = new EventSource(url);
-      let finished = false; // 标记流是否已完成
-      
-      // 添加onopen事件处理
-      eventSource.onopen = (event) => {
-        console.log('SSE connection opened:', event);
-      };
-      
-      eventSource.onmessage = (event) => {
-        // 解析SSE数据，移除"data:"前缀
-        let data = event.data;
-        if (data.startsWith('data:')) {
-          data = data.substring(5).trim();
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+    const url = `${baseUrl}/chat/chatMemory`;
+
+    const controller = new AbortController();
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify({
+          conversationId,
+          inputMsg: message,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`请求失败: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+
+      let buffer = '';
+      let finished = false;
+
+      while (!finished) {
+        const {done, value} = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, {stream: true});
+
+        // 拆分 SSE 消息块（每个事件用 \n\n 结束）
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || ''; // 保留最后不完整的部分
+
+        for (const event of events) {
+          const lines = event.split('\n');
+          const dataLines = lines
+              .filter(line => line.startsWith('data:'))
+              .map(line => line.replace(/^data:\s*/, ''));
+
+          const message = dataLines.join('\n').trim();
+
+          if (message === '[DONE]') {
+            finished = true;
+            break;
+          }
+
+          if (message) {
+            onDelta(message);
+          }
         }
-        
-        // 检查是否是结束标记
-        if (data === '[DONE]') {
-          finished = true;
-          eventSource.close();
-          resolve();
-          return;
-        }
-        
-        // 处理空数据
-        if (data) {
-          // 处理转义字符
-          data = data.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
-          onDelta(data);
-        }
-      };
-      
-      eventSource.onerror = (error) => {
-        console.error('Stream error event:', error);
-        console.log('EventSource readyState:', eventSource.readyState);
-        
-        // 如果流已完成，忽略错误（这是正常关闭连接的情况）
-        if (finished) {
-          console.log('Stream already finished, ignoring error');
-          resolve();
-          return;
-        }
-        
-        // 检查EventSource状态
-        if (eventSource.readyState === EventSource.CLOSED) {
-          // 连接已关闭，认为是正常结束
-          console.log('EventSource connection closed');
-          finished = true;
-          resolve();
-          return;
-        }
-        
-        // 检查是否是连接错误
-        if (eventSource.readyState === EventSource.CONNECTING) {
-          // 连接错误
-          console.error('Stream connection error:', error);
-          finished = true;
-          eventSource.close();
-          reject(new Error('流式传输连接错误'));
-          return;
-        }
-        
-        // 其他错误情况
-        console.error('Stream error:', error);
-        finished = true;
-        eventSource.close();
-        reject(new Error('流式传输过程中发生错误'));
-      };
-      
-      // 添加超时处理
-      const timeout = setTimeout(() => {
-        console.log('Stream timeout reached');
-        finished = true;
-        eventSource.close();
-        reject(new Error('流式传输超时'));
-      }, 30000); // 30秒超时
-      
-      // 正常结束时清除超时
-      const originalResolve = resolve;
-      resolve = (value: void | PromiseLike<void>) => {
-        console.log('Stream resolved');
-        finished = true;
-        clearTimeout(timeout);
-        originalResolve(value);
-      };
-      
-      // 错误时也清除超时
-      const originalReject = reject;
-      reject = (reason?: any) => {
-        console.log('Stream rejected:', reason);
-        finished = true;
-        clearTimeout(timeout);
-        originalReject(reason);
-      };
-    });
+      }
+    } catch (error) {
+      console.error('流式请求出错:', error);
+      throw error;
+    } finally {
+      controller.abort();
+    }
   },
+
+
+
+  // 流式消息方法 - 使用EventSource处理SSE
+  // sendMessageWithConversationStream: async (
+  //   conversationId: string,
+  //   message: string,
+  //   onDelta: (chunk: string) => void
+  // ): Promise<void> => {
+  //   return new Promise((resolve, reject) => {
+  //     // 构造SSE URL - 确保使用正确的路径
+  //     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+  //     const url = `${baseUrl}/chat/chatMemory?conversationId=${encodeURIComponent(conversationId)}&inputMsg=${encodeURIComponent(message)}`;
+  //
+  //     console.log('Connecting to SSE stream:', url);
+  //
+  //     // 创建EventSource连接
+  //     const eventSource = new EventSource(url);
+  //     let finished = false; // 标记流是否已完成
+  //
+  //     // 添加onopen事件处理
+  //     eventSource.onopen = (event) => {
+  //       console.log('SSE connection opened:', event);
+  //     };
+  //
+  //     eventSource.onmessage = (event) => {
+  //       // 解析SSE数据，移除"data:"前缀
+  //       let data = event.data;
+  //       if (data.startsWith('data:')) {
+  //         data = data.substring(5).trim();
+  //       }
+  //
+  //       // 检查是否是结束标记
+  //       if (data === '[DONE]') {
+  //         finished = true;
+  //         eventSource.close();
+  //         resolve();
+  //         return;
+  //       }
+  //
+  //       // 处理空数据
+  //       if (data) {
+  //         // 处理转义字符
+  //         data = data.replace(/\\n/g, '\n').replace(/\\r/g, '\r');
+  //         onDelta(data);
+  //       }
+  //     };
+  //
+  //     eventSource.onerror = (error) => {
+  //       console.error('Stream error event:', error);
+  //       console.log('EventSource readyState:', eventSource.readyState);
+  //
+  //       // 如果流已完成，忽略错误（这是正常关闭连接的情况）
+  //       if (finished) {
+  //         console.log('Stream already finished, ignoring error');
+  //         resolve();
+  //         return;
+  //       }
+  //
+  //       // 检查EventSource状态
+  //       if (eventSource.readyState === EventSource.CLOSED) {
+  //         // 连接已关闭，认为是正常结束
+  //         console.log('EventSource connection closed');
+  //         finished = true;
+  //         resolve();
+  //         return;
+  //       }
+  //
+  //       // 检查是否是连接错误
+  //       if (eventSource.readyState === EventSource.CONNECTING) {
+  //         // 连接错误
+  //         console.error('Stream connection error:', error);
+  //         finished = true;
+  //         eventSource.close();
+  //         reject(new Error('流式传输连接错误'));
+  //         return;
+  //       }
+  //
+  //       // 其他错误情况
+  //       console.error('Stream error:', error);
+  //       finished = true;
+  //       eventSource.close();
+  //       reject(new Error('流式传输过程中发生错误'));
+  //     };
+  //
+  //     // 添加超时处理
+  //     const timeout = setTimeout(() => {
+  //       console.log('Stream timeout reached');
+  //       finished = true;
+  //       eventSource.close();
+  //       reject(new Error('流式传输超时'));
+  //     }, 30000); // 30秒超时
+  //
+  //     // 正常结束时清除超时
+  //     const originalResolve = resolve;
+  //     resolve = (value: void | PromiseLike<void>) => {
+  //       console.log('Stream resolved');
+  //       finished = true;
+  //       clearTimeout(timeout);
+  //       originalResolve(value);
+  //     };
+  //
+  //     // 错误时也清除超时
+  //     const originalReject = reject;
+  //     reject = (reason?: any) => {
+  //       console.log('Stream rejected:', reason);
+  //       finished = true;
+  //       clearTimeout(timeout);
+  //       originalReject(reason);
+  //     };
+  //   });
+  // },
 
   // 获取演员电影信息
   getActorFilms: async (actor: string): Promise<string> => {

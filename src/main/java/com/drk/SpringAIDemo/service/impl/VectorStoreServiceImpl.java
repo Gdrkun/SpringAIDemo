@@ -3,20 +3,28 @@ package com.drk.SpringAIDemo.service.impl;
 import com.drk.SpringAIDemo.entity.KnowledgeFileEntity;
 import com.drk.SpringAIDemo.service.DocumentProcessingService;
 import com.drk.SpringAIDemo.service.VectorStoreService;
+import com.drk.SpringAIDemo.utils.TextCleanerUtil;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.tika.Tika;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationContext;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.io.File;
+import java.text.BreakIterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -34,6 +42,18 @@ public class VectorStoreServiceImpl implements VectorStoreService {
 
     @Autowired
     private DocumentProcessingService documentProcessingService;
+    @Autowired
+    private ApplicationContext context;
+    @Qualifier("ollamaEmbeddingModel")
+    @Autowired
+    private EmbeddingModel embeddingModel;
+
+    @PostConstruct
+    public void checkBeans() {
+        // 查看是否存在 EmbeddingModel Bean
+        EmbeddingModel embeddingModel = context.getBean(EmbeddingModel.class);
+        System.out.println("EmbeddingModel 类型: " + embeddingModel.getClass().getName());
+    }
 
     @Override
     public boolean vectorizeAndStore(KnowledgeFileEntity fileEntity) {
@@ -48,16 +68,28 @@ public class VectorStoreServiceImpl implements VectorStoreService {
             TikaDocumentReader tikaDocumentReader = new TikaDocumentReader(resource);
             List<Document> tempDocuments =  tikaDocumentReader.read();
 
+            List<Document> collect = tempDocuments.stream().map(
+                            document -> new Document(
+                                        TextCleanerUtil.clean(document.getText(),fileEntity.getFileSuffix().substring(1)),
+                                        document.getMetadata())
+
+                            ).toList();
+
             //标记文本分割器，将文本切分成更小的块
             TokenTextSplitter tokenTextSplitter = new TokenTextSplitter(1000, 400, 10, 5000, true);
-            List<Document> documents = tokenTextSplitter.apply(tempDocuments);
+            List<Document> documents = tokenTextSplitter.apply(collect);
 
             if (CollectionUtils.isEmpty(documents)) {
                 log.warn("文件处理后没有生成文档片段: {}", fileEntity.getFileName());
                 return false;
             }
+            AtomicInteger index = new AtomicInteger(0);
             //存储时给对应的向量数据添加文件ID，方便后续删除和查找
-            List<Document> documentWithIds = documents.stream().peek(document -> document.getMetadata().put("fileId", fileEntity.getId().toString())).toList();
+            List<Document> documentWithIds = documents.stream().peek(document -> {
+                document.getMetadata().put("fileId", fileEntity.getId().toString());
+                document.getMetadata().put("fileName", fileEntity.getFileName());
+                document.getMetadata().put("chunkIndex", String.valueOf(index.getAndIncrement()));
+            }).toList();
 
             // 存储到向量数据库
             boolean success = storeDocuments(documentWithIds);

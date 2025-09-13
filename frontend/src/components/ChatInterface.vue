@@ -177,16 +177,11 @@ const sendMessage = async (): Promise<void> => {
         }
     );
 
-    // 6. 流结束后，清理多余的换行符并标记为非流式
+    // 6. 流结束后，标记为非流式
     if (aiMessage) {
-      const finalText = aiMessage.text.replace(/\n+/g, '\n').trim(); // 合并多余换行符
       const index = messages.value.findIndex(m => m.id === aiMessage.id);
       if (index !== -1) {
-        messages.value[index] = {
-          ...aiMessage,
-          text: finalText,
-          isStreaming: false,
-        };
+        messages.value[index].isStreaming = false;
       }
     }
   } catch (error) {

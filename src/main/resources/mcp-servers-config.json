@@ -7,7 +7,7 @@
         "@modelcontextprotocol/server-brave-search"
       ],
       "env": {
-        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+        "BRAVE_API_KEY": "BSA0aq_mvRfnZQCxUDZ-xiRAu43ZQyG"
       }
     },
     "baidu-map": {
@@ -19,7 +19,7 @@
         "@baidumap/mcp-server-baidu-map"
       ],
       "env": {
-        "BAIDU_MAP_API_KEY": "${BAIDU_MAP_API_KEY}"
+        "BAIDU_MAP_API_KEY": "hoVNatdrzkuJTFKpPS9inhIncQ09ckXw"
       }
     },
     "Sequential thinking": {
@@ -27,6 +27,13 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    },
+    "time": {
+      "command": "C:\\Users\\xxx\\.local\\bin\\uvx.exe",
+      "args": [
+        "mcp-server-time",
+        "--local-timezone=Asia/Shanghai"
       ]
     }
   }
